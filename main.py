@@ -36,7 +36,7 @@ def conectar_google_sheets():
         client = gspread.authorize(creds)
         
         # IMPORTANTE: Cambia "NOMBRE_DE_TU_SHEET" por el nombre real de tu archivo de Google Sheets
-        nombre_archivo = "NOMBRE_DE_TU_SHEET" 
+        nombre_archivo = "BD MINISTROS" 
         
         sheet = client.open(nombre_archivo).get_worksheet(0)
         return sheet
