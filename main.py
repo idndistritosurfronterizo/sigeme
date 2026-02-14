@@ -11,7 +11,8 @@ USUARIO_CORRECTO = "admin"
 PASSWORD_CORRECTO = "ministros2024"
 
 # --- CONFIGURACIÓN APPSHEET ---
-# Asegúrate de que estos datos coinciden exactamente con tu AppSheet Editor
+# Es vital que el App ID sea el correcto. A veces el nombre de la app es necesario antes del ID.
+# Formato sugerido: NombreApp-ID
 APPSHEET_APP_ID = "32c8e6c2-fc2a-4dd9-97e7-2d0cdb2af68e" 
 APPSHEET_ACCESS_KEY = "V2-aH1dw-B1NeU-AkHMn-VW2ki-X4fcl-rVxWT-pgY26-NT1xZ" 
 
@@ -140,22 +141,24 @@ def obtener_url_imagen(ruta_relativa, nombre_tabla):
         return None
     
     ruta_limpia = str(ruta_relativa).strip()
-    # Filtro para evitar rutas inválidas o ceros literales de Sheets
+    # Limpiar prefijos de ruta que a veces vienen en el Sheet
+    if ruta_limpia.startswith('/'):
+        ruta_limpia = ruta_limpia[1:]
+        
     if not ruta_limpia or ruta_limpia.lower() in ["0", "nan", "none", "null", ""]:
         return None
 
-    # AppSheet requiere el AppID y el AccessKey. 
-    # La ruta relativa ya suele incluir 'MINISTRO_Images/...'
     encoded_path = urllib.parse.quote(ruta_limpia)
     
-    # URL Formateada para acceso mediante API Key
+    # URL de la API de AppSheet para recuperación de archivos de tabla
+    # Se añade el ID de la app y la tabla correspondiente
     url = (
         f"https://www.appsheet.com/template/gettablefileurl"
         f"?appName={urllib.parse.quote(APPSHEET_APP_ID)}"
         f"&tableName={urllib.parse.quote(nombre_tabla)}"
         f"&fileName={encoded_path}"
         f"&applicationAccessKey={APPSHEET_ACCESS_KEY}"
-        f"&cb={int(time.time())}" # Cache buster
+        f"&v={int(time.time())}" # Versionado para evitar cache
     )
     return url
 
@@ -205,7 +208,7 @@ def main():
             
             with c1:
                 st.markdown("### 👤 Fotografía")
-                # Buscamos la columna de foto (FOTOGRAFIA, FOTO, IMAGEN)
+                # Identificar columna de fotografía
                 col_foto = next((c for c in data.index if any(x in c for x in ['FOTO', 'IMAGEN', 'FOTOGRAFIA'])), None)
                 
                 url_foto = None
@@ -215,11 +218,11 @@ def main():
                 
                 st.markdown("<div class='img-container'>", unsafe_allow_html=True)
                 if url_foto:
-                    # Usamos st.image. Si la URL es correcta pero hay bloqueo, aparecerá el placeholder de error de imagen
-                    st.image(url_foto, use_container_width=True, caption="Cargando desde servidor...")
+                    # En Streamlit, st.image manejará el renderizado
+                    st.image(url_foto, use_container_width=True)
                 else:
                     st.markdown("<div style='font-size:6rem; color:#cbd5e1;'>👤</div>", unsafe_allow_html=True)
-                    st.caption("No hay ruta de imagen registrada")
+                    st.caption("Imagen no disponible")
                 st.markdown("</div>", unsafe_allow_html=True)
             
             with c2:
