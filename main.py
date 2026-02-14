@@ -111,56 +111,57 @@ def main():
         df_relacion = pd.DataFrame(sheet_rel.get_all_records())
         df_iglesias_cat = pd.DataFrame(sheet_ig.get_all_records())
 
-        # Limpieza estándar de nombres de columnas (espacios ocultos)
-        df_ministros.columns = [c.strip() for c in df_ministros.columns]
-        df_relacion.columns = [c.strip() for c in df_relacion.columns]
-        df_iglesias_cat.columns = [c.strip() for c in df_iglesias_cat.columns]
+        # Limpieza estándar de nombres de columnas (mayúsculas y espacios)
+        df_ministros.columns = [c.strip().upper() for c in df_ministros.columns]
+        df_relacion.columns = [c.strip().upper() for c in df_relacion.columns]
+        df_iglesias_cat.columns = [c.strip().upper() for c in df_iglesias_cat.columns]
 
         try:
-            # --- LÓGICA DE CRUCE SEGÚN FÓRMULA APPSHEET ---
+            # --- LÓGICA DE CRUCE CON COLUMNAS EN MAYÚSCULAS ---
             
-            # Asegurar que los IDs sean strings y el año sea numérico
-            # En la tabla relacional (IGLESIA), según tu fórmula, las columnas son [ministro], [iglesia], [año]
-            # En el catálogo (IGLESIAS), las columnas son [ID], [NOMBRE]
+            # Normalizar tipos de datos
+            # En pestaña IGLESIA: MINISTRO, IGLESIA, AÑO
+            # En pestaña MINISTRO: ID_MINISTRO, NOMBRE
+            # En pestaña IGLESIAS: ID, NOMBRE
             
-            # 1. Normalizar tipos de datos
-            df_relacion['año'] = pd.to_numeric(df_relacion['año'], errors='coerce').fillna(0)
-            df_relacion['ministro'] = df_relacion['ministro'].astype(str).str.strip()
-            df_relacion['iglesia'] = df_relacion['iglesia'].astype(str).str.strip()
+            df_relacion['AÑO'] = pd.to_numeric(df_relacion['AÑO'], errors='coerce').fillna(0)
+            df_relacion['MINISTRO'] = df_relacion['MINISTRO'].astype(str).str.strip()
+            df_relacion['IGLESIA'] = df_relacion['IGLESIA'].astype(str).str.strip()
             
-            df_ministros['id_ministro'] = df_ministros['id_ministro'].astype(str).str.strip()
+            df_ministros['ID_MINISTRO'] = df_ministros['ID_MINISTRO'].astype(str).str.strip()
             
             df_iglesias_cat['ID'] = df_iglesias_cat['ID'].astype(str).str.strip()
             df_iglesias_cat['NOMBRE'] = df_iglesias_cat['NOMBRE'].astype(str).str.strip()
 
-            # 2. Obtener el registro con el MAX(año) por cada ministro
-            df_rel_ordenada = df_relacion.sort_values(by=['ministro', 'año'], ascending=[True, False])
-            df_rel_actual = df_rel_ordenada.drop_duplicates(subset=['ministro'])
+            # 1. Obtener el registro con el MAX(AÑO) por cada ministro
+            df_rel_ordenada = df_relacion.sort_values(by=['MINISTRO', 'AÑO'], ascending=[True, False])
+            df_rel_actual = df_rel_ordenada.drop_duplicates(subset=['MINISTRO'])
 
-            # 3. Unir la relación actual con el catálogo para obtener el NOMBRE de la iglesia
+            # 2. Unir la relación actual con el catálogo para obtener el NOMBRE de la iglesia
             df_rel_con_nombre = pd.merge(
                 df_rel_actual,
                 df_iglesias_cat[['ID', 'NOMBRE']],
-                left_on='iglesia',
+                left_on='IGLESIA',
                 right_on='ID',
                 how='left'
             )
 
-            # 4. Unir con la tabla principal de MINISTRO
+            # 3. Unir con la tabla principal de MINISTRO
             df_final = pd.merge(
                 df_ministros,
-                df_rel_con_nombre[['ministro', 'NOMBRE', 'año']],
-                left_on='id_ministro',
-                right_on='ministro',
-                how='left'
+                df_rel_con_nombre[['MINISTRO', 'NOMBRE', 'AÑO']],
+                left_on='ID_MINISTRO',
+                right_on='MINISTRO',
+                how='left',
+                suffixes=('', '_REL')
             )
 
             # Definir resultados finales de visualización
-            df_final['IGLESIA_RESULTADO'] = df_final['NOMBRE'].fillna("Sin Iglesia Asignada")
-            df_final['AÑO_ULTIMO'] = df_final['año'].apply(lambda x: int(x) if pd.notnull(x) and x > 0 else "N/A")
+            df_final['IGLESIA_RESULTADO'] = df_final['NOMBRE_REL'].fillna("Sin Iglesia Asignada")
+            df_final['AÑO_ULTIMO'] = df_final['AÑO'].apply(lambda x: int(x) if pd.notnull(x) and x > 0 else "N/A")
 
         except Exception as e:
-            st.error(f"Error procesando datos: {e}. Verifique que las columnas 'ministro', 'iglesia' y 'año' existan en la pestaña IGLESIA.")
+            st.error(f"Error procesando datos: {e}. Verifique que las columnas 'MINISTRO', 'IGLESIA' y 'AÑO' existan en la pestaña IGLESIA.")
             df_final = df_ministros.copy()
             df_final['IGLESIA_RESULTADO'] = "Error de Datos"
             df_final['AÑO_ULTIMO'] = "N/A"
@@ -169,7 +170,6 @@ def main():
         st.markdown("<div class='header-container'><h1 class='main-title'>SIGEME</h1><p class='sub-title'>Distrito Sur Fronterizo</p></div>", unsafe_allow_html=True)
 
         # Filtro de búsqueda
-        # Buscamos la columna NOMBRE en la pestaña MINISTRO
         col_busqueda = 'NOMBRE' if 'NOMBRE' in df_final.columns else df_final.columns[1]
         lista_ministros = sorted(df_final[col_busqueda].unique().tolist())
         
@@ -197,11 +197,11 @@ def main():
 
                 # Mostrar el resto de los campos informativos
                 excluir = [
-                    'id_ministro', 'NOMBRE', 'IGLESIA', 'ministro', 
-                    'NOMBRE_x', 'NOMBRE_y', 'año', 'IGLESIA_RESULTADO', 'AÑO_ULTIMO', 'ID'
+                    'ID_MINISTRO', 'NOMBRE', 'IGLESIA', 'MINISTRO', 
+                    'NOMBRE_REL', 'AÑO', 'IGLESIA_RESULTADO', 'AÑO_ULTIMO', 'ID'
                 ]
                 cols_info = st.columns(2)
-                visible_fields = [f for f in data.index if f not in excluir and not f.endswith(('_x', '_y'))]
+                visible_fields = [f for f in data.index if f not in excluir and not f.endswith(('_X', '_Y', '_REL'))]
                 
                 for i, field in enumerate(visible_fields):
                     with cols_info[i % 2]:
