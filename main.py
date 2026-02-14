@@ -50,6 +50,12 @@ st.markdown("""
         padding: 20px;
         margin-top: 10px;
     }
+    .content-box {
+        background: white;
+        padding: 2rem;
+        border-radius: 20px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -84,7 +90,11 @@ def conectar_google_sheets():
         creds = Credentials.from_service_account_file("credenciales.json", scopes=scopes)
         client = gspread.authorize(creds)
         spreadsheet = client.open("BD MINISTROS")
-        return spreadsheet.worksheet("MINISTRO"), spreadsheet.worksheet("IGLESIA"), spreadsheet.worksheet("IGLESIAS")
+        return (
+            spreadsheet.worksheet("MINISTRO"), 
+            spreadsheet.worksheet("IGLESIA"), 
+            spreadsheet.worksheet("IGLESIAS")
+        )
     except Exception as e:
         st.error(f"Error de conexión: {e}")
         return None, None, None
@@ -92,68 +102,74 @@ def conectar_google_sheets():
 def main():
     if not check_password(): st.stop()
 
-    sheet_m, sheet_rel, sheet_ig = conectar_google_sheets()
-    
-    if sheet_m and sheet_rel and sheet_ig:
+    res = conectar_google_sheets()
+    if res and all(res):
+        sheet_m, sheet_rel, sheet_ig = res
+        
         # Cargar DataFrames
         df_ministros = pd.DataFrame(sheet_m.get_all_records())
         df_relacion = pd.DataFrame(sheet_rel.get_all_records())
         df_iglesias_cat = pd.DataFrame(sheet_ig.get_all_records())
 
-        # Limpieza de nombres de columnas
+        # Limpieza estándar de nombres de columnas (espacios ocultos)
         df_ministros.columns = [c.strip() for c in df_ministros.columns]
         df_relacion.columns = [c.strip() for c in df_relacion.columns]
         df_iglesias_cat.columns = [c.strip() for c in df_iglesias_cat.columns]
 
         try:
-            # 1. Procesar pestaña "IGLESIA" (Relacional) para obtener el año más actual
-            # Columnas esperadas: ID_ministro, IGLESIA, AÑO
-            df_relacion['AÑO'] = pd.to_numeric(df_relacion['AÑO'], errors='coerce').fillna(0)
-            df_relacion = df_relacion.sort_values(by=['ID_ministro', 'AÑO'], ascending=[True, False])
-            df_actual = df_relacion.drop_duplicates(subset=['ID_ministro'])
-
-            # 2. Unir con pestaña "IGLESIAS" (Catálogo) para traer el NOMBRE real
-            # Columnas esperadas en IGLESIAS: ID, NOMBRE
-            df_cat_map = df_iglesias_cat[['ID', 'NOMBRE']].rename(columns={'ID': 'IGLESIA_ID_CAT', 'NOMBRE': 'NOMBRE_REAL_IGLESIA'})
+            # --- LÓGICA DE CRUCE SEGÚN FÓRMULA APPSHEET ---
             
-            # Asegurar tipos string para el cruce
-            df_actual['IGLESIA'] = df_actual['IGLESIA'].astype(str).str.strip()
-            df_cat_map['IGLESIA_ID_CAT'] = df_cat_map['IGLESIA_ID_CAT'].astype(str).str.strip()
+            # Asegurar que los IDs sean strings y el año sea numérico
+            # En la tabla relacional (IGLESIA), según tu fórmula, las columnas son [ministro], [iglesia], [año]
+            # En el catálogo (IGLESIAS), las columnas son [ID], [NOMBRE]
+            
+            # 1. Normalizar tipos de datos
+            df_relacion['año'] = pd.to_numeric(df_relacion['año'], errors='coerce').fillna(0)
+            df_relacion['ministro'] = df_relacion['ministro'].astype(str).str.strip()
+            df_relacion['iglesia'] = df_relacion['iglesia'].astype(str).str.strip()
+            
+            df_ministros['id_ministro'] = df_ministros['id_ministro'].astype(str).str.strip()
+            
+            df_iglesias_cat['ID'] = df_iglesias_cat['ID'].astype(str).str.strip()
+            df_iglesias_cat['NOMBRE'] = df_iglesias_cat['NOMBRE'].astype(str).str.strip()
 
-            df_rel_completa = pd.merge(
-                df_actual, 
-                df_cat_map, 
-                left_on='IGLESIA', 
-                right_on='IGLESIA_ID_CAT', 
+            # 2. Obtener el registro con el MAX(año) por cada ministro
+            df_rel_ordenada = df_relacion.sort_values(by=['ministro', 'año'], ascending=[True, False])
+            df_rel_actual = df_rel_ordenada.drop_duplicates(subset=['ministro'])
+
+            # 3. Unir la relación actual con el catálogo para obtener el NOMBRE de la iglesia
+            df_rel_con_nombre = pd.merge(
+                df_rel_actual,
+                df_iglesias_cat[['ID', 'NOMBRE']],
+                left_on='iglesia',
+                right_on='ID',
                 how='left'
             )
 
-            # 3. Unir con pestaña "MINISTRO" principal
-            # Columnas esperadas en MINISTRO: ID_ministro, NOMBRE, IGLESIA (esta última es la que trae de origen)
-            df_ministros['ID_ministro'] = df_ministros['ID_ministro'].astype(str).str.strip()
-            df_rel_completa['ID_ministro'] = df_rel_completa['ID_ministro'].astype(str).str.strip()
-
+            # 4. Unir con la tabla principal de MINISTRO
             df_final = pd.merge(
                 df_ministros,
-                df_rel_completa[['ID_ministro', 'NOMBRE_REAL_IGLESIA', 'AÑO']],
-                on='ID_ministro',
+                df_rel_con_nombre[['ministro', 'NOMBRE', 'año']],
+                left_on='id_ministro',
+                right_on='ministro',
                 how='left'
             )
 
-            # Crear columna de visualización final
-            df_final['IGLESIA_RESULTADO'] = df_final['NOMBRE_REAL_IGLESIA'].fillna(df_final['IGLESIA'])
-            df_final['AÑO_ULTIMO'] = df_final['AÑO'].fillna("N/A")
+            # Definir resultados finales de visualización
+            df_final['IGLESIA_RESULTADO'] = df_final['NOMBRE'].fillna("Sin Iglesia Asignada")
+            df_final['AÑO_ULTIMO'] = df_final['año'].apply(lambda x: int(x) if pd.notnull(x) and x > 0 else "N/A")
 
         except Exception as e:
-            st.error(f"Error en el cruce de datos: {e}")
+            st.error(f"Error procesando datos: {e}. Verifique que las columnas 'ministro', 'iglesia' y 'año' existan en la pestaña IGLESIA.")
             df_final = df_ministros.copy()
-            df_final['IGLESIA_RESULTADO'] = "Error"
+            df_final['IGLESIA_RESULTADO'] = "Error de Datos"
             df_final['AÑO_ULTIMO'] = "N/A"
 
         # --- INTERFAZ ---
         st.markdown("<div class='header-container'><h1 class='main-title'>SIGEME</h1><p class='sub-title'>Distrito Sur Fronterizo</p></div>", unsafe_allow_html=True)
 
         # Filtro de búsqueda
+        # Buscamos la columna NOMBRE en la pestaña MINISTRO
         col_busqueda = 'NOMBRE' if 'NOMBRE' in df_final.columns else df_final.columns[1]
         lista_ministros = sorted(df_final[col_busqueda].unique().tolist())
         
@@ -171,27 +187,32 @@ def main():
             with c2:
                 st.subheader(data[col_busqueda])
                 
-                # Resaltar Iglesia Actual
+                # Resaltar Iglesia Actual según el cruce triple
                 st.markdown(f"""
                 <div class="profile-card" style="border-left: 6px solid #fbbf24; background: #fffbeb;">
-                    <p style='margin:0; font-size:0.8rem; color:#92400e;'>IGLESIA ACTUAL (Gestión {data['AÑO_ULTIMO']})</p>
+                    <p style='margin:0; font-size:0.8rem; color:#92400e; font-weight:bold;'>IGLESIA ACTUAL (Gestión {data['AÑO_ULTIMO']})</p>
                     <h3 style='margin:0; color:#78350f;'>{data['IGLESIA_RESULTADO']}</h3>
                 </div>
                 """, unsafe_allow_html=True)
 
-                # Resto de campos
-                excluir = ['ID_ministro', 'NOMBRE', 'IGLESIA', 'NOMBRE_REAL_IGLESIA', 'AÑO', 'IGLESIA_RESULTADO', 'AÑO_ULTIMO']
+                # Mostrar el resto de los campos informativos
+                excluir = [
+                    'id_ministro', 'NOMBRE', 'IGLESIA', 'ministro', 
+                    'NOMBRE_x', 'NOMBRE_y', 'año', 'IGLESIA_RESULTADO', 'AÑO_ULTIMO', 'ID'
+                ]
                 cols_info = st.columns(2)
-                visible_fields = [f for f in data.index if f not in excluir]
+                visible_fields = [f for f in data.index if f not in excluir and not f.endswith(('_x', '_y'))]
                 
                 for i, field in enumerate(visible_fields):
                     with cols_info[i % 2]:
                         st.markdown(f"""
                         <div class="profile-card">
-                            <small style='color:#64748b;'>{field}</small><br>
-                            <strong>{data[field] if data[field] != "" else "---"}</strong>
+                            <small style='color:#64748b; font-weight:600; text-transform:uppercase;'>{field}</small><br>
+                            <span style='color:#0f172a; font-weight:500;'>{data[field] if str(data[field]).strip() != "" else "---"}</span>
                         </div>
                         """, unsafe_allow_html=True)
+        else:
+            st.info("Utilice el buscador para localizar un ministro y ver su historial de gestión.")
         st.markdown("</div>", unsafe_allow_html=True)
 
 if __name__ == "__main__":
