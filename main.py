@@ -2,13 +2,16 @@ import streamlit as st
 import gspread
 from google.oauth2.service_account import Credentials
 import pandas as pd
-import plotly.express as px
 import os
-import re
 
 # --- CONFIGURACIÓN DE SEGURIDAD ---
 USUARIO_CORRECTO = "admin"
 PASSWORD_CORRECTO = "ministros2024"
+
+# --- CONFIGURACIÓN APPSHEET (Para visualizar fotos) ---
+# Puedes obtener estos datos en el editor de AppSheet: Manage -> Integrations -> Cloud Services
+APPSHEET_APP_ID = "32c8e6c2-fc2a-4dd9-97e7-2d0cdb2af68e" # Pega aquí tu App ID de AppSheet
+APPSHEET_ACCESS_KEY = "V2-aH1dw-B1NeU-AkHMn-VW2ki-X4fcl-rVxWT-pgY26-NT1xZ" # Pega aquí tu Access Key
 
 # --- CONFIGURACIÓN DE LA PÁGINA ---
 st.set_page_config(
@@ -52,6 +55,18 @@ st.markdown("""
         overflow: hidden;
         box-shadow: 0 4px 12px rgba(0,0,0,0.1);
         border: 3px solid white;
+        text-align: center;
+        background: #f1f5f9;
+        min-height: 250px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+    }
+    .img-container img {
+        width: 100%;
+        height: auto;
+        object-fit: cover;
     }
     .section-header {
         color: #003366;
@@ -107,6 +122,21 @@ def conectar_google_sheets():
         st.error(f"Error de conexión: {e}")
         return None
 
+def obtener_url_imagen(ruta_relativa, nombre_tabla):
+    """
+    Convierte la ruta de AppSheet en una URL que Streamlit puede mostrar.
+    Requiere APPSHEET_APP_ID y APPSHEET_ACCESS_KEY.
+    """
+    if not APPSHEET_APP_ID or not APPSHEET_ACCESS_KEY:
+        return None
+    
+    # URL base para obtener archivos de AppSheet
+    # Formato: https://www.appsheet.com/template/gettablefileurl?appName=APP_ID&tableName=TABLE_NAME&fileName=FILE_PATH
+    import urllib.parse
+    encoded_path = urllib.parse.quote(ruta_relativa)
+    url = f"https://www.appsheet.com/template/gettablefileurl?appName={APPSHEET_APP_ID}&tableName={nombre_tabla}&fileName={encoded_path}"
+    return url
+
 def main():
     if not check_password(): st.stop()
 
@@ -122,36 +152,16 @@ def main():
         df_est_aca_raw = pd.DataFrame(sheet_est_aca.get_all_records())
         df_revisiones_raw = pd.DataFrame(sheet_rev.get_all_records())
 
-        # Limpieza estándar de nombres de columnas (Todo a MAYÚSCULAS)
-        df_ministros.columns = [c.strip().upper() for c in df_ministros.columns]
-        df_relacion.columns = [c.strip().upper() for c in df_relacion.columns]
-        df_iglesias_cat.columns = [c.strip().upper() for c in df_iglesias_cat.columns]
-        df_est_teo_raw.columns = [c.strip().upper() for c in df_est_teo_raw.columns]
-        df_est_aca_raw.columns = [c.strip().upper() for c in df_est_aca_raw.columns]
-        df_revisiones_raw.columns = [c.strip().upper() for c in df_revisiones_raw.columns]
+        # Limpieza estándar
+        for df in [df_ministros, df_relacion, df_iglesias_cat, df_est_teo_raw, df_est_aca_raw, df_revisiones_raw]:
+            df.columns = [c.strip().upper() for c in df.columns]
 
         try:
-            # Normalizar tipos de datos para cruces
+            # Procesamiento de relaciones e iglesia actual
             df_relacion['AÑO'] = pd.to_numeric(df_relacion['AÑO'], errors='coerce').fillna(0)
-            df_relacion['MINISTRO'] = df_relacion['MINISTRO'].astype(str).str.strip()
-            df_relacion['IGLESIA'] = df_relacion['IGLESIA'].astype(str).str.strip()
-            
-            df_ministros['ID_MINISTRO'] = df_ministros['ID_MINISTRO'].astype(str).str.strip()
-            
-            df_iglesias_cat['ID'] = df_iglesias_cat['ID'].astype(str).str.strip()
-            df_iglesias_cat['NOMBRE'] = df_iglesias_cat['NOMBRE'].astype(str).str.strip()
-            
-            df_est_teo_raw['MINISTRO'] = df_est_teo_raw['MINISTRO'].astype(str).str.strip()
-            df_est_aca_raw['MINISTRO'] = df_est_aca_raw['MINISTRO'].astype(str).str.strip()
-            
-            df_revisiones_raw['MINISTRO'] = df_revisiones_raw['MINISTRO'].astype(str).str.strip()
-            df_revisiones_raw['IGLESIA'] = df_revisiones_raw['IGLESIA'].astype(str).str.strip()
-
-            # 1. Obtener el registro con el MAX(AÑO) por cada ministro (para el perfil principal)
             df_rel_ordenada = df_relacion.sort_values(by=['MINISTRO', 'AÑO'], ascending=[True, False])
             df_rel_actual = df_rel_ordenada.drop_duplicates(subset=['MINISTRO'])
-
-            # 2. Unir la relación actual con el catálogo para obtener el NOMBRE de la iglesia
+            
             df_rel_con_nombre = pd.merge(
                 df_rel_actual,
                 df_iglesias_cat[['ID', 'NOMBRE']],
@@ -160,7 +170,6 @@ def main():
                 how='left'
             )
 
-            # 3. Unir con la tabla principal de MINISTRO
             df_final = pd.merge(
                 df_ministros,
                 df_rel_con_nombre[['MINISTRO', 'NOMBRE', 'AÑO']],
@@ -170,20 +179,16 @@ def main():
                 suffixes=('', '_REL')
             )
 
-            # Definir resultados finales de visualización del perfil
             df_final['IGLESIA_RESULTADO'] = df_final['NOMBRE_REL'].fillna("Sin Iglesia Asignada")
             df_final['AÑO_ULTIMO'] = df_final['AÑO'].apply(lambda x: int(x) if pd.notnull(x) and x > 0 else "N/A")
 
         except Exception as e:
             st.error(f"Error procesando datos: {e}")
             df_final = df_ministros.copy()
-            df_final['IGLESIA_RESULTADO'] = "Error de Datos"
-            df_final['AÑO_ULTIMO'] = "N/A"
 
         # --- INTERFAZ ---
         st.markdown("<div class='header-container'><h1 class='main-title'>SIGEME</h1><p class='sub-title'>Distrito Sur Fronterizo</p></div>", unsafe_allow_html=True)
 
-        # Filtro de búsqueda
         col_busqueda = 'NOMBRE' if 'NOMBRE' in df_final.columns else df_final.columns[1]
         lista_ministros = sorted(df_final[col_busqueda].unique().tolist())
         
@@ -201,18 +206,23 @@ def main():
                 col_foto = next((c for c in data.index if 'FOTO' in c or 'IMAGEN' in c), None)
                 
                 if col_foto and str(data[col_foto]).strip() != "":
-                    foto_path = str(data[col_foto])
-                    st.markdown(f"<div class='img-container'>", unsafe_allow_html=True)
-                    st.markdown("<div style='background:#f1f5f9; height:250px; display:flex; align-items:center; justify-content:center; font-size:6rem;'>👤</div>", unsafe_allow_html=True)
+                    ruta_archivo = str(data[col_foto])
+                    # Intentamos generar la URL de AppSheet
+                    url_foto = obtener_url_imagen(ruta_archivo, "MINISTRO")
+                    
+                    st.markdown("<div class='img-container'>", unsafe_allow_html=True)
+                    if url_foto:
+                        # Usamos st.image para renderizar la URL construida
+                        st.image(url_foto, use_container_width=True)
+                    else:
+                        st.markdown("<div style='font-size:6rem;'>👤</div>", unsafe_allow_html=True)
+                        st.info("Configura APPSHEET_APP_ID para ver fotos")
                     st.markdown("</div>", unsafe_allow_html=True)
-                    st.caption(f"Ref: {foto_path.split('/')[-1]}")
                 else:
-                    st.markdown("<div style='background:#f1f5f9; height:250px; border-radius:15px; display:flex; align-items:center; justify-content:center; font-size:6rem;'>👤</div>", unsafe_allow_html=True)
+                    st.markdown("<div class='img-container'><div style='font-size:6rem;'>👤</div></div>", unsafe_allow_html=True)
             
             with c2:
                 st.subheader(data[col_busqueda])
-                
-                # Iglesia Actual
                 st.markdown(f"""
                 <div class="profile-card" style="border-left: 6px solid #fbbf24; background: #fffbeb;">
                     <p style='margin:0; font-size:0.8rem; color:#92400e; font-weight:bold;'>IGLESIA ACTUAL (Gestión {data['AÑO_ULTIMO']})</p>
@@ -220,106 +230,45 @@ def main():
                 </div>
                 """, unsafe_allow_html=True)
 
-                # Campos a excluir de las tarjetas de info general
-                excluir = [
-                    'ID_MINISTRO', 'NOMBRE', 'IGLESIA', 'MINISTRO', 
-                    'NOMBRE_REL', 'AÑO', 'IGLESIA_RESULTADO', 'AÑO_ULTIMO', 'ID',
-                    'ESTUDIOS TEOLOGICOS', 'ESTUDIOS ACADEMICOS', col_foto
-                ]
-                
+                excluir = ['ID_MINISTRO', 'NOMBRE', 'IGLESIA', 'MINISTRO', 'NOMBRE_REL', 'AÑO', 'IGLESIA_RESULTADO', 'AÑO_ULTIMO', 'ID', col_foto]
                 cols_info = st.columns(2)
                 visible_fields = [f for f in data.index if f not in excluir and not f.endswith(('_X', '_Y', '_REL'))]
                 
                 for i, field in enumerate(visible_fields):
                     with cols_info[i % 2]:
-                        st.markdown(f"""
-                        <div class="profile-card">
-                            <small style='color:#64748b; font-weight:600; text-transform:uppercase;'>{field}</small><br>
-                            <span style='color:#0f172a; font-weight:500;'>{data[field] if str(data[field]).strip() != "" else "---"}</span>
-                        </div>
-                        """, unsafe_allow_html=True)
+                        st.markdown(f"""<div class="profile-card"><small style='color:#64748b; font-weight:600; text-transform:uppercase;'>{field}</small><br><span style='color:#0f172a; font-weight:500;'>{data[field] if str(data[field]).strip() != "" else "---"}</span></div>""", unsafe_allow_html=True)
 
-            # --- SECCIÓN: REVISIÓN (AHORA EN PRIMER LUGAR) ---
+            # --- SECCIONES ORDENADAS ---
             st.markdown("<h3 class='section-header'>📝 HISTORIAL DE REVISIONES</h3>", unsafe_allow_html=True)
-            
             rev_min = df_revisiones_raw[df_revisiones_raw['MINISTRO'] == current_id]
             if not rev_min.empty:
-                # Conversión de ID de Iglesia a Nombre para la tabla de revisiones
-                rev_con_nombre = pd.merge(
-                    rev_min,
-                    df_iglesias_cat[['ID', 'NOMBRE']],
-                    left_on='IGLESIA',
-                    right_on='ID',
-                    how='left',
-                    suffixes=('_REV', '_CAT')
-                )
-                
+                rev_con_nombre = pd.merge(rev_min, df_iglesias_cat[['ID', 'NOMBRE']], left_on='IGLESIA', right_on='ID', how='left')
                 rev_con_nombre['IGLESIA_DISPLAY'] = rev_con_nombre['NOMBRE'].fillna(rev_con_nombre['IGLESIA'])
-                
-                # Quitamos ID_REVISION según solicitud
                 display_rev = rev_con_nombre[['IGLESIA_DISPLAY', 'FEC_REVISION', 'PROX_REVISION', 'STATUS']].copy()
                 display_rev.columns = ['IGLESIA', 'FEC_REVISION', 'PROX_REVISION', 'STATUS']
-                
                 st.dataframe(display_rev.sort_values(by='FEC_REVISION', ascending=False), use_container_width=True, hide_index=True)
-            else:
-                st.warning("No se encontraron registros de revisiones para este ministro.")
+            else: st.warning("No hay revisiones.")
 
-            # --- SECCIÓN: HISTORIAL DE IGLESIAS ---
             st.markdown("<h3 class='section-header'>🏛️ HISTORIAL DE GESTIÓN EN IGLESIAS</h3>", unsafe_allow_html=True)
-            
-            # Filtrar por el ministro actual en la pestaña IGLESIA (df_relacion)
             rel_min = df_relacion[df_relacion['MINISTRO'] == current_id].copy()
             if not rel_min.empty:
-                # Unir con catálogo de iglesias para obtener el NOMBRE
-                rel_con_nombre = pd.merge(
-                    rel_min,
-                    df_iglesias_cat[['ID', 'NOMBRE']],
-                    left_on='IGLESIA',
-                    right_on='ID',
-                    how='left'
-                )
-                
-                actual_cols = rel_con_nombre.columns.tolist()
-                col_nombre_iglesia = 'NOMBRE' if 'NOMBRE' in actual_cols else 'NOMBRE_Y'
-                
-                try:
-                    # Seleccionamos solo AÑO, el NOMBRE (iglesia) y OBSERVACION en el orden pedido
-                    display_rel_hist = rel_con_nombre[['AÑO', col_nombre_iglesia, 'OBSERVACION']].copy()
-                    display_rel_hist.columns = ['AÑO', 'NOMBRE DE IGLESIA', 'OBSERVACION']
-                    
-                    st.dataframe(
-                        display_rel_hist.sort_values(by='AÑO', ascending=False), 
-                        use_container_width=True, 
-                        hide_index=True
-                    )
-                except KeyError:
-                    st.warning("Estructura de columnas inesperada. Mostrando datos disponibles.")
-                    st.dataframe(rel_con_nombre, use_container_width=True, hide_index=True)
-            else:
-                st.warning("No se encontraron registros históricos de iglesias para este ministro.")
+                rel_con_nombre = pd.merge(rel_min, df_iglesias_cat[['ID', 'NOMBRE']], left_on='IGLESIA', right_on='ID', how='left')
+                display_rel_hist = rel_con_nombre[['AÑO', 'NOMBRE', 'OBSERVACION']].copy()
+                display_rel_hist.columns = ['AÑO', 'NOMBRE DE IGLESIA', 'OBSERVACION']
+                st.dataframe(display_rel_hist.sort_values(by='AÑO', ascending=False), use_container_width=True, hide_index=True)
+            else: st.warning("No hay historial de iglesias.")
 
-            # --- SECCIÓN: ESTUDIOS TEOLÓGICOS ---
             st.markdown("<h3 class='section-header'>📚 ESTUDIOS TEOLÓGICOS</h3>", unsafe_allow_html=True)
-            
             est_teo_min = df_est_teo_raw[df_est_teo_raw['MINISTRO'] == current_id]
-            if not est_teo_min.empty:
-                display_teo = est_teo_min[['NIVEL', 'ESCUELA', 'PERIODO', 'CERTIFICADO']].copy()
-                st.dataframe(display_teo, use_container_width=True, hide_index=True)
-            else:
-                st.warning("No se encontraron registros de estudios teológicos para este ministro.")
+            if not est_teo_min.empty: st.dataframe(est_teo_min[['NIVEL', 'ESCUELA', 'PERIODO', 'CERTIFICADO']], use_container_width=True, hide_index=True)
+            else: st.warning("Sin registros.")
 
-            # --- SECCIÓN: ESTUDIOS ACADÉMICOS ---
             st.markdown("<h3 class='section-header'>🎓 ESTUDIOS ACADÉMICOS</h3>", unsafe_allow_html=True)
-            
             est_aca_min = df_est_aca_raw[df_est_aca_raw['MINISTRO'] == current_id]
-            if not est_aca_min.empty:
-                display_aca = est_aca_min[['NIVEL', 'ESCUELA', 'PERIODO', 'CERTIFICADO']].copy()
-                st.dataframe(display_aca, use_container_width=True, hide_index=True)
-            else:
-                st.warning("No se encontraron registros de estudios académicos para este ministro.")
+            if not est_aca_min.empty: st.dataframe(est_aca_min[['NIVEL', 'ESCUELA', 'PERIODO', 'CERTIFICADO']], use_container_width=True, hide_index=True)
+            else: st.warning("Sin registros.")
 
-        else:
-            st.info("Utilice el buscador para localizar un ministro y ver su historial de gestión.")
+        else: st.info("Seleccione un ministro.")
         st.markdown("</div>", unsafe_allow_html=True)
 
 if __name__ == "__main__":
