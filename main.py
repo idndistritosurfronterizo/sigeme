@@ -140,29 +140,28 @@ def buscar_imagen_drive(drive_service, ruta_appsheet):
         return None
 
     try:
-        # 1. Extraer el nombre puro del archivo (ej: 1a2b3c.FOTOGRAFIA.123.jpg)
+        # Extraer solo el nombre del archivo eliminando la carpeta 'MINISTRO_Images/'
+        # Si el texto es 'MINISTRO_Images/8a6f4843.FOTOGRAFIA.184936.jpg', nombre_archivo será '8a6f4843.FOTOGRAFIA.184936.jpg'
         nombre_archivo = texto.split('/')[-1]
         
-        # 2. Búsqueda exacta
+        # Búsqueda exacta por nombre
         query = f"name = '{nombre_archivo}' and trashed = false"
         results = drive_service.files().list(q=query, fields="files(id, name)").execute()
         items = results.get('files', [])
 
-        # 3. Si falla, intentar buscar por el ID que AppSheet pone al principio
+        # Si falla la búsqueda exacta, intentamos con el ID parcial
         if not items:
-            # AppSheet suele usar el formato ID_UNICO.Columna.Hora.jpg
-            id_potencial = nombre_archivo.split('.')[0]
-            query_fallback = f"name contains '{id_potencial}' and trashed = false"
-            results = drive_service.files().list(q=query_fallback, fields="files(id, name)").execute()
+            id_prefijo = nombre_archivo.split('.')[0]
+            query_parcial = f"name contains '{id_prefijo}' and trashed = false"
+            results = drive_service.files().list(q=query_parcial, fields="files(id, name)").execute()
             items = results.get('files', [])
 
         if items:
             drive_id = items[0]['id']
-            # Retornamos la URL de miniatura que no requiere tokens de acceso si la carpeta es pública
+            # Usamos el enlace de visualización directa (thumbnail) con alta calidad
             return f"https://drive.google.com/thumbnail?id={drive_id}&sz=w1000"
             
     except Exception as e:
-        print(f"Error buscando imagen: {e}")
         return None
     return None
 
@@ -210,17 +209,14 @@ def main():
             
             with c1:
                 st.markdown("### 👤 Fotografía")
-                # Buscar cualquier columna que contenga palabras clave de imagen
                 col_foto = next((c for c in data.index if any(x in c for x in ['FOTO', 'IMAGEN', 'FOTOGRAFIA'])), None)
                 
                 url_foto = None
                 if col_foto and drive_service:
-                    valor_celda = data[col_foto]
-                    url_foto = buscar_imagen_drive(drive_service, valor_celda)
+                    url_foto = buscar_imagen_drive(drive_service, data[col_foto])
                 
                 st.markdown("<div class='img-container'>", unsafe_allow_html=True)
                 if url_foto:
-                    # Usamos st.image de Streamlit que maneja mejor las URLs de Drive compartidas
                     st.image(url_foto, use_container_width=True)
                 else:
                     st.markdown("<div style='font-size:6rem; color:#cbd5e1;'>👤</div>", unsafe_allow_html=True)
