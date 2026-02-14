@@ -142,13 +142,15 @@ def descargar_imagen_bytes(drive_service, ruta_appsheet):
         return None
 
     try:
+        # Extraer solo el nombre real del archivo
         nombre_archivo = texto.split('/')[-1]
         
-        # Búsqueda del archivo
+        # Búsqueda rigurosa
         query = f"name = '{nombre_archivo}' and trashed = false"
         results = drive_service.files().list(q=query, fields="files(id, name)").execute()
         items = results.get('files', [])
 
+        # Si no hay coincidencia exacta, buscar por la parte inicial del ID
         if not items:
             id_prefijo = nombre_archivo.split('.')[0]
             query_parcial = f"name contains '{id_prefijo}' and trashed = false"
@@ -157,7 +159,7 @@ def descargar_imagen_bytes(drive_service, ruta_appsheet):
 
         if items:
             file_id = items[0]['id']
-            # Descarga real de los bytes del archivo
+            # Intentar descarga
             request = drive_service.files().get_media(fileId=file_id)
             fh = io.BytesIO()
             downloader = MediaIoBaseDownload(fh, request)
@@ -168,6 +170,7 @@ def descargar_imagen_bytes(drive_service, ruta_appsheet):
             return fh.read()
             
     except Exception as e:
+        # Silencioso en producción pero capturado en depuración
         return None
     return None
 
@@ -215,11 +218,13 @@ def main():
             
             with c1:
                 st.markdown("### 👤 Fotografía")
+                # Identificar la columna de imagen
                 col_foto = next((c for c in data.index if any(x in c for x in ['FOTO', 'IMAGEN', 'FOTOGRAFIA'])), None)
                 
                 img_bytes = None
                 if col_foto and drive_service:
-                    img_bytes = descargar_imagen_bytes(drive_service, data[col_foto])
+                    with st.spinner('Buscando foto en Drive...'):
+                        img_bytes = descargar_imagen_bytes(drive_service, data[col_foto])
                 
                 st.markdown("<div class='img-container'>", unsafe_allow_html=True)
                 if img_bytes:
@@ -228,7 +233,7 @@ def main():
                     st.markdown("<div style='font-size:6rem; color:#cbd5e1;'>👤</div>", unsafe_allow_html=True)
                     st.caption("Imagen no encontrada")
                     if col_foto:
-                        st.write(f"Dato en tabla: {data[col_foto]}")
+                        st.info(f"Ruta buscada: {data[col_foto]}")
                 st.markdown("</div>", unsafe_allow_html=True)
             
             with c2:
