@@ -1,8 +1,3 @@
-Aquí tienes el código completo y listo para copiar directamente. He configurado la línea 46 para que busque específicamente el archivo "BD MINISTROS" y la línea 49 para que entre directamente a la pestaña llamada "ministro".
-
-Copia todo este bloque de texto y pégalo en tu archivo main.py en GitHub:
-
-Python
 import streamlit as st
 import gspread
 from google.oauth2.service_account import Credentials
