@@ -122,7 +122,7 @@ def main():
         df_est_aca_raw = pd.DataFrame(sheet_est_aca.get_all_records())
         df_revisiones_raw = pd.DataFrame(sheet_rev.get_all_records())
 
-        # Limpieza estándar de nombres de columnas
+        # Limpieza estándar de nombres de columnas (Todo a MAYÚSCULAS)
         df_ministros.columns = [c.strip().upper() for c in df_ministros.columns]
         df_relacion.columns = [c.strip().upper() for c in df_relacion.columns]
         df_iglesias_cat.columns = [c.strip().upper() for c in df_iglesias_cat.columns]
@@ -254,10 +254,30 @@ def main():
                     how='left'
                 )
                 
-                # Columnas finales a mostrar (Cambiado OBSERVACIONES a OBSERVACION)
-                display_rel_hist = rel_con_nombre[['ID', 'NOMBRE', 'AÑO', 'OBSERVACION']].copy()
-                display_rel_hist.columns = ['ID', 'IGLESIA', 'AÑO', 'OBSERVACION']
-                st.dataframe(display_rel_hist.sort_values(by='AÑO', ascending=False), use_container_width=True, hide_index=True)
+                # SELECCIÓN CORREGIDA: Usar mayúsculas para coincidir con la normalización superior
+                # Si en el Sheets es 'OBSERVACION', tras df_relacion.columns = [...upper()] es 'OBSERVACION'
+                cols_historial = ['ID_REL', 'NOMBRE_CAT', 'AÑO', 'OBSERVACION']
+                
+                # Verificamos qué columnas existen realmente para evitar nuevos KeyErrors
+                actual_cols = rel_con_nombre.columns.tolist()
+                
+                # Intentamos mapear las columnas correctas dinámicamente si los nombres variaron por el merge
+                # Tras el merge, 'ID' de la relación suele ser 'ID' y 'NOMBRE' del catálogo suele ser 'NOMBRE'
+                # Pero si hay colisiones, Pandas añade sufijos.
+                
+                display_rel_hist = rel_con_nombre.copy()
+                
+                # Identificar columnas por contenido si es necesario o por nombre exacto post-merge
+                col_id = 'ID_X' if 'ID_X' in actual_cols else 'ID'
+                col_nombre = 'NOMBRE' if 'NOMBRE' in actual_cols else 'NOMBRE_Y'
+                
+                try:
+                    display_rel_hist = rel_con_nombre[[col_id, col_nombre, 'AÑO', 'OBSERVACION']].copy()
+                    display_rel_hist.columns = ['ID', 'IGLESIA', 'AÑO', 'OBSERVACION']
+                    st.dataframe(display_rel_hist.sort_values(by='AÑO', ascending=False), use_container_width=True, hide_index=True)
+                except KeyError:
+                    # Fallback si las columnas no se llaman como esperamos tras el merge
+                    st.dataframe(rel_con_nombre, use_container_width=True, hide_index=True)
             else:
                 st.warning("No se encontraron registros históricos de iglesias para este ministro.")
 
@@ -296,10 +316,8 @@ def main():
                     suffixes=('_REV', '_CAT')
                 )
                 
-                # Priorizar el nombre del catálogo, si no existe dejar el ID original
                 rev_con_nombre['IGLESIA_DISPLAY'] = rev_con_nombre['NOMBRE'].fillna(rev_con_nombre['IGLESIA'])
                 
-                # Columnas finales a mostrar
                 display_rev = rev_con_nombre[['ID_REVISION', 'IGLESIA_DISPLAY', 'FEC_REVISION', 'PROX_REVISION', 'STATUS']].copy()
                 display_rev.columns = ['ID_REVISION', 'IGLESIA', 'FEC_REVISION', 'PROX_REVISION', 'STATUS']
                 
