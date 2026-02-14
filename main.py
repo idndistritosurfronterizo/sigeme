@@ -53,6 +53,14 @@ st.markdown("""
         box-shadow: 0 4px 12px rgba(0,0,0,0.1);
         border: 3px solid white;
     }
+    .section-header {
+        color: #003366;
+        border-bottom: 2px solid #e2e8f0;
+        padding-bottom: 0.5rem;
+        margin-top: 2rem;
+        margin-bottom: 1rem;
+        font-weight: 800;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -82,7 +90,7 @@ def conectar_google_sheets():
     scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
     if not os.path.exists("credenciales.json"):
         st.error("Archivo credenciales.json no encontrado")
-        return None, None, None
+        return None, None, None, None, None
     try:
         creds = Credentials.from_service_account_file("credenciales.json", scopes=scopes)
         client = gspread.authorize(creds)
@@ -90,31 +98,34 @@ def conectar_google_sheets():
         return (
             spreadsheet.worksheet("MINISTRO"), 
             spreadsheet.worksheet("IGLESIA"), 
-            spreadsheet.worksheet("IGLESIAS")
+            spreadsheet.worksheet("IGLESIAS"),
+            spreadsheet.worksheet("ESTUDIOS TEOLOGICOS")
         )
     except Exception as e:
         st.error(f"Error de conexión: {e}")
-        return None, None, None
+        return None, None, None, None
 
 def main():
     if not check_password(): st.stop()
 
     res = conectar_google_sheets()
     if res and all(res):
-        sheet_m, sheet_rel, sheet_ig = res
+        sheet_m, sheet_rel, sheet_ig, sheet_est = res
         
         # Cargar DataFrames
         df_ministros = pd.DataFrame(sheet_m.get_all_records())
         df_relacion = pd.DataFrame(sheet_rel.get_all_records())
         df_iglesias_cat = pd.DataFrame(sheet_ig.get_all_records())
+        df_estudios_raw = pd.DataFrame(sheet_est.get_all_records())
 
         # Limpieza estándar de nombres de columnas
         df_ministros.columns = [c.strip().upper() for c in df_ministros.columns]
         df_relacion.columns = [c.strip().upper() for c in df_relacion.columns]
         df_iglesias_cat.columns = [c.strip().upper() for c in df_iglesias_cat.columns]
+        df_estudios_raw.columns = [c.strip().upper() for c in df_estudios_raw.columns]
 
         try:
-            # Normalizar tipos de datos
+            # Normalizar tipos de datos para cruces
             df_relacion['AÑO'] = pd.to_numeric(df_relacion['AÑO'], errors='coerce').fillna(0)
             df_relacion['MINISTRO'] = df_relacion['MINISTRO'].astype(str).str.strip()
             df_relacion['IGLESIA'] = df_relacion['IGLESIA'].astype(str).str.strip()
@@ -123,6 +134,8 @@ def main():
             
             df_iglesias_cat['ID'] = df_iglesias_cat['ID'].astype(str).str.strip()
             df_iglesias_cat['NOMBRE'] = df_iglesias_cat['NOMBRE'].astype(str).str.strip()
+            
+            df_estudios_raw['MINISTRO'] = df_estudios_raw['MINISTRO'].astype(str).str.strip()
 
             # 1. Obtener el registro con el MAX(AÑO) por cada ministro
             df_rel_ordenada = df_relacion.sort_values(by=['MINISTRO', 'AÑO'], ascending=[True, False])
@@ -169,22 +182,17 @@ def main():
 
         if seleccion != "-- Seleccionar --":
             data = df_final[df_final[col_busqueda] == seleccion].iloc[0]
+            current_id = data['ID_MINISTRO']
             
             c1, c2 = st.columns([1, 3])
             
             with c1:
                 st.markdown("### 👤 Fotografía")
-                # Identificar columna de fotografía
                 col_foto = next((c for c in data.index if 'FOTO' in c or 'IMAGEN' in c), None)
                 
                 if col_foto and str(data[col_foto]).strip() != "":
-                    # En AppSheet, las fotos se guardan como rutas relativas.
-                    # Para mostrarlas aquí, usualmente se requiere una URL pública o binaria.
-                    # Si están en Drive, podemos intentar mostrar la referencia o un placeholder si no hay proxy.
                     foto_path = str(data[col_foto])
                     st.markdown(f"<div class='img-container'>", unsafe_allow_html=True)
-                    # Nota: Streamlit no puede leer carpetas locales de Drive directamente sin un ID de archivo.
-                    # Por ahora mostramos un icono elegante y la ruta debajo si no es URL.
                     st.markdown("<div style='background:#f1f5f9; height:250px; display:flex; align-items:center; justify-content:center; font-size:6rem;'>👤</div>", unsafe_allow_html=True)
                     st.markdown("</div>", unsafe_allow_html=True)
                     st.caption(f"Ref: {foto_path.split('/')[-1]}")
@@ -194,7 +202,7 @@ def main():
             with c2:
                 st.subheader(data[col_busqueda])
                 
-                # Resaltar Iglesia Actual
+                # Iglesia Actual
                 st.markdown(f"""
                 <div class="profile-card" style="border-left: 6px solid #fbbf24; background: #fffbeb;">
                     <p style='margin:0; font-size:0.8rem; color:#92400e; font-weight:bold;'>IGLESIA ACTUAL (Gestión {data['AÑO_ULTIMO']})</p>
@@ -202,7 +210,7 @@ def main():
                 </div>
                 """, unsafe_allow_html=True)
 
-                # Campos a excluir (incluyendo los solicitados)
+                # Campos a excluir
                 excluir = [
                     'ID_MINISTRO', 'NOMBRE', 'IGLESIA', 'MINISTRO', 
                     'NOMBRE_REL', 'AÑO', 'IGLESIA_RESULTADO', 'AÑO_ULTIMO', 'ID',
@@ -210,7 +218,6 @@ def main():
                 ]
                 
                 cols_info = st.columns(2)
-                # Filtrar campos visibles quitando sufijos de cruce y los excluidos
                 visible_fields = [f for f in data.index if f not in excluir and not f.endswith(('_X', '_Y', '_REL'))]
                 
                 for i, field in enumerate(visible_fields):
@@ -221,6 +228,27 @@ def main():
                             <span style='color:#0f172a; font-weight:500;'>{data[field] if str(data[field]).strip() != "" else "---"}</span>
                         </div>
                         """, unsafe_allow_html=True)
+
+            # --- NUEVA SECCIÓN: ESTUDIOS TEOLÓGICOS ---
+            st.markdown("<h3 class='section-header'>📚 ESTUDIOS TEOLÓGICOS</h3>", unsafe_allow_html=True)
+            
+            # Filtrar estudios por el ID del ministro seleccionado
+            estudios_ministro = df_estudios_raw[df_estudios_raw['MINISTRO'] == current_id]
+            
+            if not estudios_ministro.empty:
+                # Mostrar en formato tabla estilizada
+                # Columnas a mostrar: NIVEL, ESCUELA, PERIODO, CERTIFICADO
+                display_estudios = estudios_ministro[['NIVEL', 'ESCUELA', 'PERIODO', 'CERTIFICADO']].copy()
+                
+                # Usamos st.table o st.dataframe para la lista, pero st.dataframe es más interactivo
+                st.dataframe(
+                    display_estudios, 
+                    use_container_width=True, 
+                    hide_index=True
+                )
+            else:
+                st.warning("No se encontraron registros de estudios teológicos para este ministro.")
+
         else:
             st.info("Utilice el buscador para localizar un ministro y ver su historial de gestión.")
         st.markdown("</div>", unsafe_allow_html=True)
