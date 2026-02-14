@@ -4,12 +4,14 @@ from google.oauth2.service_account import Credentials
 import pandas as pd
 import os
 import urllib.parse
+import time
 
 # --- CONFIGURACIÓN DE SEGURIDAD ---
 USUARIO_CORRECTO = "admin"
 PASSWORD_CORRECTO = "ministros2024"
 
-# --- CONFIGURACIÓN APPSHEET (Para visualizar fotos) ---
+# --- CONFIGURACIÓN APPSHEET ---
+# Asegúrate de que estos datos coinciden exactamente con tu AppSheet Editor
 APPSHEET_APP_ID = "32c8e6c2-fc2a-4dd9-97e7-2d0cdb2af68e" 
 APPSHEET_ACCESS_KEY = "V2-aH1dw-B1NeU-AkHMn-VW2ki-X4fcl-rVxWT-pgY26-NT1xZ" 
 
@@ -57,7 +59,7 @@ st.markdown("""
         border: 3px solid white;
         text-align: center;
         background: #f1f5f9;
-        min-height: 250px;
+        min-height: 280px;
         display: flex;
         flex-direction: column;
         align-items: center;
@@ -66,7 +68,8 @@ st.markdown("""
     .img-container img {
         width: 100%;
         height: auto;
-        object-fit: cover;
+        max-height: 400px;
+        object-fit: contain;
     }
     .section-header {
         color: #003366;
@@ -123,36 +126,37 @@ def conectar_google_sheets():
         return None
 
 def safe_get_dataframe(worksheet):
-    """
-    Obtiene un DataFrame de forma segura incluso si hay encabezados vacíos o duplicados.
-    """
     data = worksheet.get_all_values()
-    if not data:
-        return pd.DataFrame()
-    
+    if not data: return pd.DataFrame()
     headers = data[0]
-    # Limpiar encabezados vacíos para evitar errores de pandas
-    clean_headers = []
-    for i, h in enumerate(headers):
-        val = h.strip().upper()
-        if val == "":
-            clean_headers.append(f"COL_{i}")
-        else:
-            clean_headers.append(val)
-            
-    df = pd.DataFrame(data[1:], columns=clean_headers)
-    return df
+    clean_headers = [h.strip().upper() if h.strip() else f"COL_{i}" for i, h in enumerate(headers)]
+    return pd.DataFrame(data[1:], columns=clean_headers)
 
 def obtener_url_imagen(ruta_relativa, nombre_tabla):
+    """
+    Genera la URL pública para AppSheet usando la API de archivos.
+    """
     if not APPSHEET_APP_ID or not APPSHEET_ACCESS_KEY:
         return None
     
     ruta_limpia = str(ruta_relativa).strip()
-    if not ruta_limpia or ruta_limpia in ["0", "nan", "None"]:
+    # Filtro para evitar rutas inválidas o ceros literales de Sheets
+    if not ruta_limpia or ruta_limpia.lower() in ["0", "nan", "none", "null", ""]:
         return None
 
+    # AppSheet requiere el AppID y el AccessKey. 
+    # La ruta relativa ya suele incluir 'MINISTRO_Images/...'
     encoded_path = urllib.parse.quote(ruta_limpia)
-    url = f"https://www.appsheet.com/template/gettablefileurl?appName={APPSHEET_APP_ID}&tableName={nombre_tabla}&fileName={encoded_path}&applicationAccessKey={APPSHEET_ACCESS_KEY}"
+    
+    # URL Formateada para acceso mediante API Key
+    url = (
+        f"https://www.appsheet.com/template/gettablefileurl"
+        f"?appName={urllib.parse.quote(APPSHEET_APP_ID)}"
+        f"&tableName={urllib.parse.quote(nombre_tabla)}"
+        f"&fileName={encoded_path}"
+        f"&applicationAccessKey={APPSHEET_ACCESS_KEY}"
+        f"&cb={int(time.time())}" # Cache buster
+    )
     return url
 
 def main():
@@ -161,8 +165,6 @@ def main():
     res = conectar_google_sheets()
     if res and all(res):
         sheets = list(res)
-        
-        # Cargar DataFrames de forma segura (Solución al error GSpreadException)
         df_ministros = safe_get_dataframe(sheets[0])
         df_relacion = safe_get_dataframe(sheets[1])
         df_iglesias_cat = safe_get_dataframe(sheets[2])
@@ -170,79 +172,58 @@ def main():
         df_est_aca_raw = safe_get_dataframe(sheets[4])
         df_revisiones_raw = safe_get_dataframe(sheets[5])
 
-        if df_relacion.empty or df_ministros.empty:
-            st.error("No se pudieron cargar los datos de MINISTRO o RELACION. Revisa los encabezados de tu Excel.")
+        if df_ministros.empty:
+            st.error("No se encontraron datos en la tabla MINISTRO.")
             st.stop()
 
+        # Procesamiento de Iglesia Actual
         try:
-            # Procesamiento de relaciones e iglesia actual
             df_relacion['AÑO'] = pd.to_numeric(df_relacion['AÑO'], errors='coerce').fillna(0)
-            df_rel_ordenada = df_relacion.sort_values(by=['MINISTRO', 'AÑO'], ascending=[True, False])
-            df_rel_actual = df_rel_ordenada.drop_duplicates(subset=['MINISTRO'])
-            
-            df_rel_con_nombre = pd.merge(
-                df_rel_actual,
-                df_iglesias_cat[['ID', 'NOMBRE']],
-                left_on='IGLESIA',
-                right_on='ID',
-                how='left'
-            )
-
-            df_final = pd.merge(
-                df_ministros,
-                df_rel_con_nombre[['MINISTRO', 'NOMBRE', 'AÑO']],
-                left_on='ID_MINISTRO',
-                right_on='MINISTRO',
-                how='left',
-                suffixes=('', '_REL')
-            )
-
+            df_rel_actual = df_relacion.sort_values(by=['MINISTRO', 'AÑO'], ascending=[True, False]).drop_duplicates(subset=['MINISTRO'])
+            df_rel_con_nombre = pd.merge(df_rel_actual, df_iglesias_cat[['ID', 'NOMBRE']], left_on='IGLESIA', right_on='ID', how='left')
+            df_final = pd.merge(df_ministros, df_rel_con_nombre[['MINISTRO', 'NOMBRE', 'AÑO']], left_on='ID_MINISTRO', right_on='MINISTRO', how='left', suffixes=('', '_REL'))
             df_final['IGLESIA_RESULTADO'] = df_final['NOMBRE_REL'].fillna("Sin Iglesia Asignada")
             df_final['AÑO_ULTIMO'] = df_final['AÑO'].apply(lambda x: int(x) if pd.notnull(x) and x > 0 else "N/A")
-
-        except Exception as e:
-            st.error(f"Error procesando datos: {e}")
+        except:
             df_final = df_ministros.copy()
+            df_final['IGLESIA_RESULTADO'] = "Error al procesar"
+            df_final['AÑO_ULTIMO'] = "N/A"
 
-        # --- INTERFAZ ---
         st.markdown("<div class='header-container'><h1 class='main-title'>SIGEME</h1><p class='sub-title'>Distrito Sur Fronterizo</p></div>", unsafe_allow_html=True)
 
-        col_busqueda = 'NOMBRE' if 'NOMBRE' in df_final.columns else df_final.columns[1]
-        lista_ministros = sorted(df_final[col_busqueda].unique().tolist())
+        col_nombre = 'NOMBRE' if 'NOMBRE' in df_final.columns else df_final.columns[1]
+        lista_ministros = sorted(df_final[col_nombre].unique().tolist())
         
         st.markdown("<div class='content-box'>", unsafe_allow_html=True)
         seleccion = st.selectbox("Seleccione un Ministro:", ["-- Seleccionar --"] + lista_ministros)
 
         if seleccion != "-- Seleccionar --":
-            data = df_final[df_final[col_busqueda] == seleccion].iloc[0]
+            data = df_final[df_final[col_nombre] == seleccion].iloc[0]
             current_id = data['ID_MINISTRO']
             
             c1, c2 = st.columns([1, 3])
             
             with c1:
                 st.markdown("### 👤 Fotografía")
-                col_foto = next((c for c in data.index if 'FOTO' in c or 'IMAGEN' in c), None)
+                # Buscamos la columna de foto (FOTOGRAFIA, FOTO, IMAGEN)
+                col_foto = next((c for c in data.index if any(x in c for x in ['FOTO', 'IMAGEN', 'FOTOGRAFIA'])), None)
                 
                 url_foto = None
                 if col_foto:
                     valor_celda = str(data[col_foto]).strip()
-                    if valor_celda and valor_celda not in ["0", "nan", "None", ""]:
-                        url_foto = obtener_url_imagen(valor_celda, "MINISTRO")
+                    url_foto = obtener_url_imagen(valor_celda, "MINISTRO")
                 
                 st.markdown("<div class='img-container'>", unsafe_allow_html=True)
                 if url_foto:
-                    try:
-                        st.image(url_foto, use_container_width=True)
-                    except:
-                        st.markdown("<div style='font-size:6rem;'>👤</div>", unsafe_allow_html=True)
-                        st.caption("No se pudo cargar la imagen")
+                    # Usamos st.image. Si la URL es correcta pero hay bloqueo, aparecerá el placeholder de error de imagen
+                    st.image(url_foto, use_container_width=True, caption="Cargando desde servidor...")
                 else:
-                    st.markdown("<div style='font-size:6rem;'>👤</div>", unsafe_allow_html=True)
-                    st.caption("Sin fotografía")
+                    st.markdown("<div style='font-size:6rem; color:#cbd5e1;'>👤</div>", unsafe_allow_html=True)
+                    st.caption("No hay ruta de imagen registrada")
                 st.markdown("</div>", unsafe_allow_html=True)
             
             with c2:
-                st.subheader(data[col_busqueda])
+                st.subheader(data[col_nombre])
                 st.markdown(f"""
                 <div class="profile-card" style="border-left: 6px solid #fbbf24; background: #fffbeb;">
                     <p style='margin:0; font-size:0.8rem; color:#92400e; font-weight:bold;'>IGLESIA ACTUAL (Gestión {data['AÑO_ULTIMO']})</p>
@@ -256,39 +237,26 @@ def main():
                 
                 for i, field in enumerate(visible_fields):
                     with cols_info[i % 2]:
-                        st.markdown(f"""<div class="profile-card"><small style='color:#64748b; font-weight:600; text-transform:uppercase;'>{field}</small><br><span style='color:#0f172a; font-weight:500;'>{data[field] if str(data[field]).strip() not in ["", "0", "nan"] else "---"}</span></div>""", unsafe_allow_html=True)
+                        val = str(data[field]).strip()
+                        display_val = val if val not in ["", "0", "nan", "None"] else "---"
+                        st.markdown(f"""<div class="profile-card"><small style='color:#64748b; font-weight:600; text-transform:uppercase;'>{field}</small><br><span style='color:#0f172a; font-weight:500;'>{display_val}</span></div>""", unsafe_allow_html=True)
 
-            # --- SECCIONES ORDENADAS ---
-            st.markdown("<h3 class='section-header'>📝 HISTORIAL DE REVISIONES</h3>", unsafe_allow_html=True)
+            # Historiales
+            st.markdown("<h3 class='section-header'>📝 REVISIONES</h3>", unsafe_allow_html=True)
             rev_min = df_revisiones_raw[df_revisiones_raw['MINISTRO'] == current_id]
             if not rev_min.empty:
                 rev_con_nombre = pd.merge(rev_min, df_iglesias_cat[['ID', 'NOMBRE']], left_on='IGLESIA', right_on='ID', how='left')
                 rev_con_nombre['IGLESIA_DISPLAY'] = rev_con_nombre['NOMBRE'].fillna(rev_con_nombre['IGLESIA'])
-                display_rev = rev_con_nombre[['IGLESIA_DISPLAY', 'FEC_REVISION', 'PROX_REVISION', 'STATUS']].copy()
-                display_rev.columns = ['IGLESIA', 'FEC_REVISION', 'PROX_REVISION', 'STATUS']
-                st.dataframe(display_rev.sort_values(by='FEC_REVISION', ascending=False), use_container_width=True, hide_index=True)
-            else: st.warning("No hay revisiones.")
+                st.dataframe(rev_con_nombre[['IGLESIA_DISPLAY', 'FEC_REVISION', 'STATUS']].sort_values(by='FEC_REVISION', ascending=False), use_container_width=True, hide_index=True)
+            else: st.info("Sin registros de revisión.")
 
-            st.markdown("<h3 class='section-header'>🏛️ HISTORIAL DE GESTIÓN EN IGLESIAS</h3>", unsafe_allow_html=True)
+            st.markdown("<h3 class='section-header'>🏛️ GESTIÓN EN IGLESIAS</h3>", unsafe_allow_html=True)
             rel_min = df_relacion[df_relacion['MINISTRO'] == current_id].copy()
             if not rel_min.empty:
                 rel_con_nombre = pd.merge(rel_min, df_iglesias_cat[['ID', 'NOMBRE']], left_on='IGLESIA', right_on='ID', how='left')
-                display_rel_hist = rel_con_nombre[['AÑO', 'NOMBRE', 'OBSERVACION']].copy()
-                display_rel_hist.columns = ['AÑO', 'NOMBRE DE IGLESIA', 'OBSERVACION']
-                st.dataframe(display_rel_hist.sort_values(by='AÑO', ascending=False), use_container_width=True, hide_index=True)
-            else: st.warning("No hay historial de iglesias.")
+                st.dataframe(rel_con_nombre[['AÑO', 'NOMBRE', 'OBSERVACION']].sort_values(by='AÑO', ascending=False), use_container_width=True, hide_index=True)
+            else: st.info("Sin historial de iglesias.")
 
-            st.markdown("<h3 class='section-header'>📚 ESTUDIOS TEOLÓGICOS</h3>", unsafe_allow_html=True)
-            est_teo_min = df_est_teo_raw[df_est_teo_raw['MINISTRO'] == current_id]
-            if not est_teo_min.empty: st.dataframe(est_teo_min[['NIVEL', 'ESCUELA', 'PERIODO', 'CERTIFICADO']], use_container_width=True, hide_index=True)
-            else: st.warning("Sin registros.")
-
-            st.markdown("<h3 class='section-header'>🎓 ESTUDIOS ACADÉMICOS</h3>", unsafe_allow_html=True)
-            est_aca_min = df_est_aca_raw[df_est_aca_raw['MINISTRO'] == current_id]
-            if not est_aca_min.empty: st.dataframe(est_aca_min[['NIVEL', 'ESCUELA', 'PERIODO', 'CERTIFICADO']], use_container_width=True, hide_index=True)
-            else: st.warning("Sin registros.")
-
-        else: st.info("Seleccione un ministro.")
         st.markdown("</div>", unsafe_allow_html=True)
 
 if __name__ == "__main__":
