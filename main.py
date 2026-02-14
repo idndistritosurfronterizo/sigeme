@@ -16,21 +16,12 @@ st.set_page_config(
     layout="wide"
 )
 
-# --- DISEÑO CSS PROFESIONAL Y ATRACTIVO ---
+# --- DISEÑO CSS ---
 st.markdown("""
     <style>
-    /* Importación de tipografía moderna */
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap');
-    
-    html, body, [class*="css"] {
-        font-family: 'Inter', sans-serif;
-    }
-
-    .stApp {
-        background-color: #f8fafc;
-    }
-    
-    /* Encabezado */
+    html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
+    .stApp { background-color: #f8fafc; }
     .header-container {
         background: linear-gradient(135deg, #003366 0%, #00509d 100%);
         padding: 3rem;
@@ -40,77 +31,24 @@ st.markdown("""
         margin-bottom: 2rem;
         box-shadow: 0 10px 25px rgba(0,51,102,0.15);
     }
-    .main-title {
-        font-size: 3.5rem;
-        font-weight: 800;
-        margin: 0;
-        letter-spacing: -1px;
-    }
-    .sub-title {
-        font-size: 1.2rem;
-        opacity: 0.9;
-        margin-top: 0.5rem;
-        font-weight: 400;
-    }
-    .distrito-tag {
-        display: inline-block;
-        background: rgba(255,255,255,0.2);
-        padding: 5px 15px;
-        border-radius: 50px;
-        font-size: 0.9rem;
-        margin-top: 1rem;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-    }
-
-    /* Tarjetas de métricas interactivas */
+    .main-title { font-size: 3.5rem; font-weight: 800; margin: 0; letter-spacing: -1px; }
+    .sub-title { font-size: 1.2rem; opacity: 0.9; margin-top: 0.5rem; }
     .metric-card {
         background: white;
         padding: 1.5rem;
         border-radius: 16px;
-        box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06);
-        transition: transform 0.2s ease;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.05);
         border-left: 6px solid #003366;
         height: 100%;
     }
-    .metric-card:hover {
-        transform: translateY(-5px);
-    }
-    .metric-label {
-        color: #64748b;
-        font-size: 0.875rem;
-        font-weight: 600;
-        text-transform: uppercase;
-        margin-bottom: 0.5rem;
-    }
-    .metric-value {
-        color: #0f172a;
-        font-size: 2rem;
-        font-weight: 800;
-    }
-
-    /* Contenedores */
-    .content-box {
-        background: white;
-        padding: 2rem;
-        border-radius: 20px;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-        border: 1px solid #e2e8f0;
-    }
-    
+    .metric-label { color: #64748b; font-size: 0.875rem; font-weight: 600; text-transform: uppercase; }
+    .metric-value { color: #0f172a; font-size: 2rem; font-weight: 800; }
     .profile-card {
         background: #ffffff;
         border: 1px solid #e2e8f0;
         border-radius: 15px;
         padding: 20px;
         margin-top: 10px;
-        min-height: 80px;
-    }
-
-    /* Sidebar */
-    [data-testid="stSidebar"] {
-        background-color: #ffffff;
-        border-right: 1px solid #e2e8f0;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -118,223 +56,143 @@ st.markdown("""
 def check_password():
     if "authenticated" not in st.session_state:
         st.session_state["authenticated"] = False
-
     if st.session_state["authenticated"]:
         return True
-
-    st.markdown("<br><br>", unsafe_allow_html=True)
+    
     col1, col2, col3 = st.columns([1, 1.2, 1])
     with col2:
-        if os.path.exists("logoNazareno.png"):
-            st.image("logoNazareno.png", width=120)
-        
-        st.markdown("""
-            <div style='background: white; padding: 40px; border-radius: 24px; box-shadow: 0 20px 50px rgba(0,0,0,0.1); text-align: center;'>
-                <h1 style='color: #003366; font-weight: 800; margin-bottom: 10px;'>SIGEME</h1>
-                <p style='color: #64748b;'>Sistema de Gestión Ministerial y Eclesiástica</p>
-                <hr style='opacity: 0.1; margin: 25px 0;'>
-            </div>
-        """, unsafe_allow_html=True)
-        
+        st.markdown("<div style='text-align: center; padding: 40px; background: white; border-radius: 24px; box-shadow: 0 20px 50px rgba(0,0,0,0.1);'>", unsafe_allow_html=True)
+        st.title("SIGEME")
         with st.form("login_form"):
             user = st.text_input("Usuario")
             password = st.text_input("Contraseña", type="password")
-            if st.form_submit_button("Acceder al Portal", use_container_width=True):
+            if st.form_submit_button("Acceder", use_container_width=True):
                 if user == USUARIO_CORRECTO and password == PASSWORD_CORRECTO:
                     st.session_state["authenticated"] = True
                     st.rerun()
                 else:
-                    st.error("Acceso denegado. Verifique sus credenciales.")
+                    st.error("Credenciales incorrectas")
+        st.markdown("</div>", unsafe_allow_html=True)
     return False
 
 def conectar_google_sheets():
     scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
     if not os.path.exists("credenciales.json"):
-        st.error("❌ Error de sistema: Archivo de credenciales no detectado.")
+        st.error("Archivo credenciales.json no encontrado")
         return None, None, None
     try:
         creds = Credentials.from_service_account_file("credenciales.json", scopes=scopes)
         client = gspread.authorize(creds)
         spreadsheet = client.open("BD MINISTROS")
-        
-        # Obtenemos las 3 pestañas necesarias
-        sheet_m = spreadsheet.worksheet("MINISTRO")
-        sheet_rel = spreadsheet.worksheet("IGLESIA")  # Tabla relacional
-        sheet_ig = spreadsheet.worksheet("IGLESIAS") # Catálogo de nombres
-        
-        return sheet_m, sheet_rel, sheet_ig
+        return spreadsheet.worksheet("MINISTRO"), spreadsheet.worksheet("IGLESIA"), spreadsheet.worksheet("IGLESIAS")
     except Exception as e:
         st.error(f"Error de conexión: {e}")
         return None, None, None
 
 def main():
-    if not check_password():
-        st.stop()
-
-    with st.sidebar:
-        if os.path.exists("logoNazareno.png"):
-            st.image("logoNazareno.png", use_container_width=True)
-        st.markdown("<h2 style='text-align: center; color: #003366;'>SIGEME</h2>", unsafe_allow_html=True)
-        st.markdown("---")
-        if st.button("🚪 Cerrar Sesión Segura", use_container_width=True):
-            st.session_state["authenticated"] = False
-            st.rerun()
-        st.markdown("### ⚙️ Panel de Filtros")
+    if not check_password(): st.stop()
 
     sheet_m, sheet_rel, sheet_ig = conectar_google_sheets()
     
     if sheet_m and sheet_rel and sheet_ig:
+        # Cargar DataFrames
         df_ministros = pd.DataFrame(sheet_m.get_all_records())
-        df_relacional = pd.DataFrame(sheet_rel.get_all_records())
-        df_catalogo_iglesias = pd.DataFrame(sheet_ig.get_all_records())
+        df_relacion = pd.DataFrame(sheet_rel.get_all_records())
+        df_iglesias_cat = pd.DataFrame(sheet_ig.get_all_records())
 
-        # --- LÓGICA DE VINCULACIÓN AVANZADA ---
-        # 1. Limpiar datos de año para asegurar ordenamiento correcto
-        if 'AÑO' in df_relacional.columns:
-            df_relacional['AÑO'] = pd.to_numeric(df_relacional['AÑO'], errors='coerce').fillna(0)
-            # Ordenar por Ministro y Año descendente para tener el más actual arriba
-            df_rel_sorted = df_relacional.sort_values(by=['ID_ministro', 'AÑO'], ascending=[True, False])
-            # Quedarnos solo con el registro más actual por ministro
-            df_actual_iglesia = df_rel_sorted.drop_duplicates(subset=['ID_ministro'])
-        else:
-            df_actual_iglesia = df_relacional.copy()
+        # Limpieza de nombres de columnas
+        df_ministros.columns = [c.strip() for c in df_ministros.columns]
+        df_relacion.columns = [c.strip() for c in df_relacion.columns]
+        df_iglesias_cat.columns = [c.strip() for c in df_iglesias_cat.columns]
 
-        # 2. Unir la relación actual con el catálogo de nombres de iglesias
-        # Pestaña "IGLESIA" tiene ID_ministro e IGLESIA ID
-        # Pestaña "IGLESIAS" tiene ID_IGLESIA y NOMBRE_IGLESIA
-        df_iglesia_info = pd.merge(
-            df_actual_iglesia,
-            df_catalogo_iglesias[['ID_IGLESIA', 'NOMBRE_IGLESIA']],
-            left_on='IGLESIA ID',
-            right_on='ID_IGLESIA',
-            how='left'
-        )
+        try:
+            # 1. Procesar pestaña "IGLESIA" (Relacional) para obtener el año más actual
+            # Columnas esperadas: ID_ministro, IGLESIA, AÑO
+            df_relacion['AÑO'] = pd.to_numeric(df_relacion['AÑO'], errors='coerce').fillna(0)
+            df_relacion = df_relacion.sort_values(by=['ID_ministro', 'AÑO'], ascending=[True, False])
+            df_actual = df_relacion.drop_duplicates(subset=['ID_ministro'])
 
-        # 3. Unir finalmente con la tabla de Ministros
-        df = pd.merge(
-            df_ministros,
-            df_iglesia_info[['ID_ministro', 'NOMBRE_IGLESIA', 'AÑO']],
-            on='ID_ministro',
-            how='left'
-        )
-        
-        # Renombrar para consistencia en la UI
-        df['IGLESIA_ACTUAL'] = df['NOMBRE_IGLESIA'].fillna("Sin Iglesia Asignada")
-        df['AÑO_GESTION'] = df['AÑO'].fillna("N/A")
-
-        # Filtros Sidebar
-        cols_sidebar = [c for c in df.columns if c not in ['ID_ministro', 'NOMBRE_IGLESIA']]
-        sel_col = st.sidebar.selectbox("Agrupar por:", ["Ver Todo"] + cols_sidebar)
-        df_view = df.copy()
-        if sel_col != "Ver Todo":
-            vals = df[sel_col].unique().tolist()
-            picks = st.sidebar.multiselect(f"Seleccionar {sel_col}:", vals)
-            if picks:
-                df_view = df[df[sel_col].isin(picks)]
-
-        # --- CABECERA VISUAL ---
-        st.markdown("""
-            <div class='header-container'>
-                <h1 class='main-title'>SIGEME</h1>
-                <p class='sub-title'>Sistema de Gestión Ministerial y Eclesiástica</p>
-                <span class='distrito-tag'>Distrito Sur Fronterizo</span>
-            </div>
-        """, unsafe_allow_html=True)
-
-        # --- CÁLCULO DE MÉTRICAS ---
-        total_iglesias = df_view['IGLESIA_ACTUAL'].nunique()
-        
-        def contar_categoria(dataframe, texto):
-            mask = dataframe.apply(lambda x: x.astype(str).str.contains(texto, case=False, na=False)).any(axis=1)
-            return len(dataframe[mask])
-
-        num_presbiteros = contar_categoria(df_view, 'PRESBITERO')
-        num_licenciados = contar_categoria(df_view, 'LICENCIADO')
-        num_laicos = contar_categoria(df_view, 'LAICO')
-
-        # --- PANEL DE MÉTRICAS ---
-        m1, m2, m3, m4 = st.columns(4)
-        with m1:
-            st.markdown(f"""<div class='metric-card'><div class='metric-label'>Total de Iglesias</div><div class='metric-value'>{total_iglesias}</div></div>""", unsafe_allow_html=True)
-        with m2:
-            st.markdown(f"""<div class='metric-card'><div class='metric-label'>Presbíteros</div><div class='metric-value'>{num_presbiteros}</div></div>""", unsafe_allow_html=True)
-        with m3:
-            st.markdown(f"""<div class='metric-card'><div class='metric-label'>M. Licenciados</div><div class='metric-value'>{num_licenciados}</div></div>""", unsafe_allow_html=True)
-        with m4:
-            st.markdown(f"""<div class='metric-card'><div class='metric-label'>Ministros Laicos</div><div class='metric-value'>{num_laicos}</div></div>""", unsafe_allow_html=True)
-
-        st.markdown("<br>", unsafe_allow_html=True)
-
-        # --- BUSCADOR PRINCIPAL ---
-        st.markdown('<div class="content-box">', unsafe_allow_html=True)
-        st.subheader("🔍 Buscador de Ministro")
-        
-        col_nombre = next((c for c in df.columns if 'NOMBRE' in c.upper()), df.columns[0])
-        lista_nombres = sorted(df[col_nombre].unique().tolist())
-        nombre_sel = st.selectbox("Escriba o seleccione un Ministro para ver su ficha:", ["-- Seleccionar --"] + lista_nombres)
-        
-        if nombre_sel != "-- Seleccionar --":
-            ministro_data = df[df[col_nombre] == nombre_sel].iloc[0]
+            # 2. Unir con pestaña "IGLESIAS" (Catálogo) para traer el NOMBRE real
+            # Columnas esperadas en IGLESIAS: ID, NOMBRE
+            df_cat_map = df_iglesias_cat[['ID', 'NOMBRE']].rename(columns={'ID': 'IGLESIA_ID_CAT', 'NOMBRE': 'NOMBRE_REAL_IGLESIA'})
             
-            # --- GESTIÓN DE FOTOGRAFÍA ---
-            col_img_text, col_profile = st.columns([1, 3])
+            # Asegurar tipos string para el cruce
+            df_actual['IGLESIA'] = df_actual['IGLESIA'].astype(str).str.strip()
+            df_cat_map['IGLESIA_ID_CAT'] = df_cat_map['IGLESIA_ID_CAT'].astype(str).str.strip()
+
+            df_rel_completa = pd.merge(
+                df_actual, 
+                df_cat_map, 
+                left_on='IGLESIA', 
+                right_on='IGLESIA_ID_CAT', 
+                how='left'
+            )
+
+            # 3. Unir con pestaña "MINISTRO" principal
+            # Columnas esperadas en MINISTRO: ID_ministro, NOMBRE, IGLESIA (esta última es la que trae de origen)
+            df_ministros['ID_ministro'] = df_ministros['ID_ministro'].astype(str).str.strip()
+            df_rel_completa['ID_ministro'] = df_rel_completa['ID_ministro'].astype(str).str.strip()
+
+            df_final = pd.merge(
+                df_ministros,
+                df_rel_completa[['ID_ministro', 'NOMBRE_REAL_IGLESIA', 'AÑO']],
+                on='ID_ministro',
+                how='left'
+            )
+
+            # Crear columna de visualización final
+            df_final['IGLESIA_RESULTADO'] = df_final['NOMBRE_REAL_IGLESIA'].fillna(df_final['IGLESIA'])
+            df_final['AÑO_ULTIMO'] = df_final['AÑO'].fillna("N/A")
+
+        except Exception as e:
+            st.error(f"Error en el cruce de datos: {e}")
+            df_final = df_ministros.copy()
+            df_final['IGLESIA_RESULTADO'] = "Error"
+            df_final['AÑO_ULTIMO'] = "N/A"
+
+        # --- INTERFAZ ---
+        st.markdown("<div class='header-container'><h1 class='main-title'>SIGEME</h1><p class='sub-title'>Distrito Sur Fronterizo</p></div>", unsafe_allow_html=True)
+
+        # Filtro de búsqueda
+        col_busqueda = 'NOMBRE' if 'NOMBRE' in df_final.columns else df_final.columns[1]
+        lista_ministros = sorted(df_final[col_busqueda].unique().tolist())
+        
+        st.markdown("<div class='content-box'>", unsafe_allow_html=True)
+        seleccion = st.selectbox("Seleccione un Ministro:", ["-- Seleccionar --"] + lista_ministros)
+
+        if seleccion != "-- Seleccionar --":
+            data = df_final[df_final[col_busqueda] == seleccion].iloc[0]
             
-            with col_img_text:
-                col_foto_key = next((c for c in df.columns if 'FOTOGRAFIA' in c.upper() or 'FOTO' in c.upper()), None)
-                if col_foto_key and ministro_data[col_foto_key]:
-                    ruta_foto = str(ministro_data[col_foto_key])
-                    if os.path.exists(ruta_foto):
-                        st.image(ruta_foto, use_container_width=True, caption=nombre_sel)
-                    else:
+            c1, c2 = st.columns([1, 3])
+            with c1:
+                st.markdown("### 👤 Perfil")
+                st.markdown("<div style='background:#f1f5f9; height:180px; border-radius:15px; display:flex; align-items:center; justify-content:center; font-size:4rem;'>👤</div>", unsafe_allow_html=True)
+            
+            with c2:
+                st.subheader(data[col_busqueda])
+                
+                # Resaltar Iglesia Actual
+                st.markdown(f"""
+                <div class="profile-card" style="border-left: 6px solid #fbbf24; background: #fffbeb;">
+                    <p style='margin:0; font-size:0.8rem; color:#92400e;'>IGLESIA ACTUAL (Gestión {data['AÑO_ULTIMO']})</p>
+                    <h3 style='margin:0; color:#78350f;'>{data['IGLESIA_RESULTADO']}</h3>
+                </div>
+                """, unsafe_allow_html=True)
+
+                # Resto de campos
+                excluir = ['ID_ministro', 'NOMBRE', 'IGLESIA', 'NOMBRE_REAL_IGLESIA', 'AÑO', 'IGLESIA_RESULTADO', 'AÑO_ULTIMO']
+                cols_info = st.columns(2)
+                visible_fields = [f for f in data.index if f not in excluir]
+                
+                for i, field in enumerate(visible_fields):
+                    with cols_info[i % 2]:
                         st.markdown(f"""
-                            <div style='background: #e2e8f0; border-radius: 15px; height: 200px; display: flex; align-items: center; justify-content: center;'>
-                                <span style='font-size: 5rem;'>👤</span>
-                            </div>
-                            <p style='text-align:center; font-size:0.8rem; color:#64748b; margin-top:5px;'>Perfil: {nombre_sel}</p>
+                        <div class="profile-card">
+                            <small style='color:#64748b;'>{field}</small><br>
+                            <strong>{data[field] if data[field] != "" else "---"}</strong>
+                        </div>
                         """, unsafe_allow_html=True)
-                else:
-                    st.markdown("<div style='background:#f1f5f9; height:200px; border-radius:15px; display:flex; align-items:center; justify-content:center;'>👤 Sin Foto</div>", unsafe_allow_html=True)
-
-            with col_profile:
-                st.markdown(f"## {nombre_sel}")
-                
-                # Campos a excluir o limpiar de la vista
-                excluir = [
-                    'ID_ministro', 'ESTUDIOS TEOLOGICOS', 'ESTUDIOS ACADEMICOS', 
-                    col_foto_key, col_nombre, 'NOMBRE_IGLESIA', 'IGLESIA', 'AÑO'
-                ]
-                
-                # Rejilla de información
-                m_cols = st.columns(2)
-                
-                # Mostrar la Iglesia Actual (del cruce con la tabla relacional "IGLESIA")
-                with m_cols[0]:
-                    st.markdown(f"""
-                    <div class="profile-card" style="border-left: 6px solid #fbbf24;">
-                        <p style='color: #64748b; font-size: 0.8rem; margin:0; text-transform: uppercase;'>IGLESIA ACTUAL ({ministro_data['AÑO_GESTION']})</p>
-                        <p style='color: #003366; font-weight: 800; margin:0; font-size: 1.2rem;'>{ministro_data['IGLESIA_ACTUAL']}</p>
-                    </div>
-                    """, unsafe_allow_html=True)
-                
-                idx_display = 1
-                for col_key, col_val in ministro_data.items():
-                    if col_key not in excluir and col_key not in ['IGLESIA_ACTUAL', 'AÑO_GESTION']:
-                        with m_cols[idx_display % 2]:
-                            st.markdown(f"""
-                            <div class="profile-card">
-                                <p style='color: #64748b; font-size: 0.8rem; margin:0; text-transform: uppercase; letter-spacing: 0.5px;'>{col_key}</p>
-                                <p style='color: #003366; font-weight: 600; margin:0; font-size: 1.1rem;'>{col_val if col_val != "" else "---"}</p>
-                            </div>
-                            """, unsafe_allow_html=True)
-                        idx_display += 1
-            
-            st.markdown("<br>", unsafe_allow_html=True)
-            csv_single = pd.DataFrame([ministro_data]).to_csv(index=False).encode('utf-8')
-            st.download_button(f"📥 Descargar Ficha de {nombre_sel}", csv_single, f"ficha_{nombre_sel}.csv", "text/csv")
-
-        else:
-            st.info("Utilice el buscador superior para localizar a un ministro y desplegar su información completa.")
-        st.markdown('</div>', unsafe_allow_html=True)
+        st.markdown("</div>", unsafe_allow_html=True)
 
 if __name__ == "__main__":
     main()
