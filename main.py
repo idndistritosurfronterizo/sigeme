@@ -143,6 +143,7 @@ def main():
             
             df_est_teo_raw['MINISTRO'] = df_est_teo_raw['MINISTRO'].astype(str).str.strip()
             df_est_aca_raw['MINISTRO'] = df_est_aca_raw['MINISTRO'].astype(str).str.strip()
+            
             df_revisiones_raw['MINISTRO'] = df_revisiones_raw['MINISTRO'].astype(str).str.strip()
             df_revisiones_raw['IGLESIA'] = df_revisiones_raw['IGLESIA'].astype(str).str.strip()
 
@@ -238,6 +239,27 @@ def main():
                         </div>
                         """, unsafe_allow_html=True)
 
+            # --- SECCIÓN: HISTORIAL DE IGLESIAS ---
+            st.markdown("<h3 class='section-header'>🏛️ HISTORIAL DE GESTIÓN EN IGLESIAS</h3>", unsafe_allow_html=True)
+            
+            # Filtrar por el ministro actual en la pestaña IGLESIA (df_relacion)
+            rel_min = df_relacion[df_relacion['MINISTRO'] == current_id].copy()
+            if not rel_min.empty:
+                # Unir con catálogo de iglesias para obtener el NOMBRE
+                rel_con_nombre = pd.merge(
+                    rel_min,
+                    df_iglesias_cat[['ID', 'NOMBRE']],
+                    left_on='IGLESIA',
+                    right_on='ID',
+                    how='left'
+                )
+                # Seleccionar y renombrar columnas para visualización
+                display_rel_hist = rel_con_nombre[['ID', 'NOMBRE', 'AÑO', 'OBSERVACIONES']].copy()
+                display_rel_hist.columns = ['ID', 'IGLESIA', 'AÑO', 'OBSERVACIONES']
+                st.dataframe(display_rel_hist.sort_values(by='AÑO', ascending=False), use_container_width=True, hide_index=True)
+            else:
+                st.warning("No se encontraron registros históricos de iglesias para este ministro.")
+
             # --- SECCIÓN: ESTUDIOS TEOLÓGICOS ---
             st.markdown("<h3 class='section-header'>📚 ESTUDIOS TEOLÓGICOS</h3>", unsafe_allow_html=True)
             
@@ -280,7 +302,7 @@ def main():
                 display_rev = rev_con_nombre[['ID_REVISION', 'IGLESIA_DISPLAY', 'FEC_REVISION', 'PROX_REVISION', 'STATUS']].copy()
                 display_rev.columns = ['ID_REVISION', 'IGLESIA', 'FEC_REVISION', 'PROX_REVISION', 'STATUS']
                 
-                st.dataframe(display_rev, use_container_width=True, hide_index=True)
+                st.dataframe(display_rev.sort_values(by='FEC_REVISION', ascending=False), use_container_width=True, hide_index=True)
             else:
                 st.warning("No se encontraron registros de revisiones para este ministro.")
 
