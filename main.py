@@ -253,9 +253,10 @@ def main():
                     right_on='ID',
                     how='left'
                 )
-                # Seleccionar y renombrar columnas para visualización
-                display_rel_hist = rel_con_nombre[['ID', 'NOMBRE', 'AÑO', 'OBSERVACIONES']].copy()
-                display_rel_hist.columns = ['ID', 'IGLESIA', 'AÑO', 'OBSERVACIONES']
+                
+                # Columnas finales a mostrar (Cambiado OBSERVACIONES a OBSERVACION)
+                display_rel_hist = rel_con_nombre[['ID', 'NOMBRE', 'AÑO', 'OBSERVACION']].copy()
+                display_rel_hist.columns = ['ID', 'IGLESIA', 'AÑO', 'OBSERVACION']
                 st.dataframe(display_rel_hist.sort_values(by='AÑO', ascending=False), use_container_width=True, hide_index=True)
             else:
                 st.warning("No se encontraron registros históricos de iglesias para este ministro.")
