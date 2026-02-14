@@ -58,16 +58,12 @@ st.markdown("""
         border: 3px solid white;
         text-align: center;
         background: #f1f5f9;
-        min-height: 280px;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
+        margin-top: 10px;
+        display: block;
     }
     .img-container img {
         width: 100%;
         height: auto;
-        max-height: 400px;
         object-fit: cover;
     }
     .section-header {
@@ -144,7 +140,7 @@ def descargar_imagen_bytes(drive_service, ruta_appsheet):
         return None
 
     try:
-        # Extraer nombre del archivo (8a6f4843.FOTOGRAFIA.184936.jpg)
+        # Extraer nombre del archivo
         nombre_archivo = texto.split('/')[-1]
         
         # 1. Búsqueda exacta
@@ -152,14 +148,14 @@ def descargar_imagen_bytes(drive_service, ruta_appsheet):
         results = drive_service.files().list(q=query, fields="files(id, name)").execute()
         items = results.get('files', [])
 
-        # 2. Si falla, búsqueda por nombre parcial (contiene el ID de AppSheet)
+        # 2. Si falla, búsqueda por nombre parcial
         if not items:
             id_prefijo = nombre_archivo.split('.')[0]
             query_parcial = f"name contains '{id_prefijo}' and trashed = false"
             results = drive_service.files().list(q=query_parcial, fields="files(id, name)").execute()
             items = results.get('files', [])
 
-        # 3. Si sigue fallando, buscar archivos que tengan el mismo nombre sin importar extensiones
+        # 3. Si sigue fallando, búsqueda de último recurso
         if not items:
             solo_nombre = nombre_archivo.rsplit('.', 1)[0]
             query_nombre = f"name contains '{solo_nombre}' and trashed = false"
@@ -229,18 +225,17 @@ def main():
                 
                 img_bytes = None
                 if col_foto and drive_service:
-                    with st.spinner('Buscando foto...'):
+                    with st.spinner('Cargando...'):
                         img_bytes = descargar_imagen_bytes(drive_service, data[col_foto])
                 
-                st.markdown("<div class='img-container'>", unsafe_allow_html=True)
                 if img_bytes:
+                    st.markdown("<div class='img-container'>", unsafe_allow_html=True)
                     st.image(img_bytes, use_container_width=True)
+                    st.markdown("</div>", unsafe_allow_html=True)
                 else:
-                    st.markdown("<div style='font-size:6rem; color:#cbd5e1;'>👤</div>", unsafe_allow_html=True)
-                    st.caption("Imagen no encontrada")
+                    st.markdown("<div class='img-container' style='padding: 50px 0;'><div style='font-size:6rem; color:#cbd5e1;'>👤</div><br><small style='color:#64748b;'>Imagen no encontrada</small></div>", unsafe_allow_html=True)
                     if col_foto:
-                        st.info(f"Ruta en tabla: {data[col_foto]}")
-                st.markdown("</div>", unsafe_allow_html=True)
+                        st.caption(f"Ruta: {data[col_foto]}")
             
             with c2:
                 st.subheader(data[col_nombre])
