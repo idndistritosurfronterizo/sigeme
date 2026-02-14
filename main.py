@@ -144,8 +144,9 @@ def main():
             df_est_teo_raw['MINISTRO'] = df_est_teo_raw['MINISTRO'].astype(str).str.strip()
             df_est_aca_raw['MINISTRO'] = df_est_aca_raw['MINISTRO'].astype(str).str.strip()
             df_revisiones_raw['MINISTRO'] = df_revisiones_raw['MINISTRO'].astype(str).str.strip()
+            df_revisiones_raw['IGLESIA'] = df_revisiones_raw['IGLESIA'].astype(str).str.strip()
 
-            # 1. Obtener el registro con el MAX(AÑO) por cada ministro
+            # 1. Obtener el registro con el MAX(AÑO) por cada ministro (para el perfil principal)
             df_rel_ordenada = df_relacion.sort_values(by=['MINISTRO', 'AÑO'], ascending=[True, False])
             df_rel_actual = df_rel_ordenada.drop_duplicates(subset=['MINISTRO'])
 
@@ -168,7 +169,7 @@ def main():
                 suffixes=('', '_REL')
             )
 
-            # Definir resultados finales de visualización
+            # Definir resultados finales de visualización del perfil
             df_final['IGLESIA_RESULTADO'] = df_final['NOMBRE_REL'].fillna("Sin Iglesia Asignada")
             df_final['AÑO_ULTIMO'] = df_final['AÑO'].apply(lambda x: int(x) if pd.notnull(x) and x > 0 else "N/A")
 
@@ -218,7 +219,7 @@ def main():
                 </div>
                 """, unsafe_allow_html=True)
 
-                # Campos a excluir
+                # Campos a excluir de las tarjetas de info general
                 excluir = [
                     'ID_MINISTRO', 'NOMBRE', 'IGLESIA', 'MINISTRO', 
                     'NOMBRE_REL', 'AÑO', 'IGLESIA_RESULTADO', 'AÑO_ULTIMO', 'ID',
@@ -262,8 +263,23 @@ def main():
             
             rev_min = df_revisiones_raw[df_revisiones_raw['MINISTRO'] == current_id]
             if not rev_min.empty:
-                # Mostrar columnas: ID_REVISION, IGLESIA, FEC_REVISION, PROX_REVISION, STATUS
-                display_rev = rev_min[['ID_REVISION', 'IGLESIA', 'FEC_REVISION', 'PROX_REVISION', 'STATUS']].copy()
+                # Conversión de ID de Iglesia a Nombre para la tabla de revisiones
+                rev_con_nombre = pd.merge(
+                    rev_min,
+                    df_iglesias_cat[['ID', 'NOMBRE']],
+                    left_on='IGLESIA',
+                    right_on='ID',
+                    how='left',
+                    suffixes=('_REV', '_CAT')
+                )
+                
+                # Priorizar el nombre del catálogo, si no existe dejar el ID original
+                rev_con_nombre['IGLESIA_DISPLAY'] = rev_con_nombre['NOMBRE'].fillna(rev_con_nombre['IGLESIA'])
+                
+                # Columnas finales a mostrar
+                display_rev = rev_con_nombre[['ID_REVISION', 'IGLESIA_DISPLAY', 'FEC_REVISION', 'PROX_REVISION', 'STATUS']].copy()
+                display_rev.columns = ['ID_REVISION', 'IGLESIA', 'FEC_REVISION', 'PROX_REVISION', 'STATUS']
+                
                 st.dataframe(display_rev, use_container_width=True, hide_index=True)
             else:
                 st.warning("No se encontraron registros de revisiones para este ministro.")
