@@ -4,6 +4,7 @@ from google.oauth2.service_account import Credentials
 import pandas as pd
 import plotly.express as px
 import os
+import re
 
 # --- CONFIGURACIÓN DE SEGURIDAD ---
 USUARIO_CORRECTO = "admin"
@@ -33,16 +34,6 @@ st.markdown("""
     }
     .main-title { font-size: 3.5rem; font-weight: 800; margin: 0; letter-spacing: -1px; }
     .sub-title { font-size: 1.2rem; opacity: 0.9; margin-top: 0.5rem; }
-    .metric-card {
-        background: white;
-        padding: 1.5rem;
-        border-radius: 16px;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.05);
-        border-left: 6px solid #003366;
-        height: 100%;
-    }
-    .metric-label { color: #64748b; font-size: 0.875rem; font-weight: 600; text-transform: uppercase; }
-    .metric-value { color: #0f172a; font-size: 2rem; font-weight: 800; }
     .profile-card {
         background: #ffffff;
         border: 1px solid #e2e8f0;
@@ -55,6 +46,12 @@ st.markdown("""
         padding: 2rem;
         border-radius: 20px;
         box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    .img-container {
+        border-radius: 20px;
+        overflow: hidden;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        border: 3px solid white;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -111,19 +108,13 @@ def main():
         df_relacion = pd.DataFrame(sheet_rel.get_all_records())
         df_iglesias_cat = pd.DataFrame(sheet_ig.get_all_records())
 
-        # Limpieza estándar de nombres de columnas (mayúsculas y espacios)
+        # Limpieza estándar de nombres de columnas
         df_ministros.columns = [c.strip().upper() for c in df_ministros.columns]
         df_relacion.columns = [c.strip().upper() for c in df_relacion.columns]
         df_iglesias_cat.columns = [c.strip().upper() for c in df_iglesias_cat.columns]
 
         try:
-            # --- LÓGICA DE CRUCE CON COLUMNAS EN MAYÚSCULAS ---
-            
             # Normalizar tipos de datos
-            # En pestaña IGLESIA: MINISTRO, IGLESIA, AÑO
-            # En pestaña MINISTRO: ID_MINISTRO, NOMBRE
-            # En pestaña IGLESIAS: ID, NOMBRE
-            
             df_relacion['AÑO'] = pd.to_numeric(df_relacion['AÑO'], errors='coerce').fillna(0)
             df_relacion['MINISTRO'] = df_relacion['MINISTRO'].astype(str).str.strip()
             df_relacion['IGLESIA'] = df_relacion['IGLESIA'].astype(str).str.strip()
@@ -161,7 +152,7 @@ def main():
             df_final['AÑO_ULTIMO'] = df_final['AÑO'].apply(lambda x: int(x) if pd.notnull(x) and x > 0 else "N/A")
 
         except Exception as e:
-            st.error(f"Error procesando datos: {e}. Verifique que las columnas 'MINISTRO', 'IGLESIA' y 'AÑO' existan en la pestaña IGLESIA.")
+            st.error(f"Error procesando datos: {e}")
             df_final = df_ministros.copy()
             df_final['IGLESIA_RESULTADO'] = "Error de Datos"
             df_final['AÑO_ULTIMO'] = "N/A"
@@ -180,14 +171,30 @@ def main():
             data = df_final[df_final[col_busqueda] == seleccion].iloc[0]
             
             c1, c2 = st.columns([1, 3])
+            
             with c1:
-                st.markdown("### 👤 Perfil")
-                st.markdown("<div style='background:#f1f5f9; height:180px; border-radius:15px; display:flex; align-items:center; justify-content:center; font-size:4rem;'>👤</div>", unsafe_allow_html=True)
+                st.markdown("### 👤 Fotografía")
+                # Identificar columna de fotografía
+                col_foto = next((c for c in data.index if 'FOTO' in c or 'IMAGEN' in c), None)
+                
+                if col_foto and str(data[col_foto]).strip() != "":
+                    # En AppSheet, las fotos se guardan como rutas relativas.
+                    # Para mostrarlas aquí, usualmente se requiere una URL pública o binaria.
+                    # Si están en Drive, podemos intentar mostrar la referencia o un placeholder si no hay proxy.
+                    foto_path = str(data[col_foto])
+                    st.markdown(f"<div class='img-container'>", unsafe_allow_html=True)
+                    # Nota: Streamlit no puede leer carpetas locales de Drive directamente sin un ID de archivo.
+                    # Por ahora mostramos un icono elegante y la ruta debajo si no es URL.
+                    st.markdown("<div style='background:#f1f5f9; height:250px; display:flex; align-items:center; justify-content:center; font-size:6rem;'>👤</div>", unsafe_allow_html=True)
+                    st.markdown("</div>", unsafe_allow_html=True)
+                    st.caption(f"Ref: {foto_path.split('/')[-1]}")
+                else:
+                    st.markdown("<div style='background:#f1f5f9; height:250px; border-radius:15px; display:flex; align-items:center; justify-content:center; font-size:6rem;'>👤</div>", unsafe_allow_html=True)
             
             with c2:
                 st.subheader(data[col_busqueda])
                 
-                # Resaltar Iglesia Actual según el cruce triple
+                # Resaltar Iglesia Actual
                 st.markdown(f"""
                 <div class="profile-card" style="border-left: 6px solid #fbbf24; background: #fffbeb;">
                     <p style='margin:0; font-size:0.8rem; color:#92400e; font-weight:bold;'>IGLESIA ACTUAL (Gestión {data['AÑO_ULTIMO']})</p>
@@ -195,12 +202,15 @@ def main():
                 </div>
                 """, unsafe_allow_html=True)
 
-                # Mostrar el resto de los campos informativos
+                # Campos a excluir (incluyendo los solicitados)
                 excluir = [
                     'ID_MINISTRO', 'NOMBRE', 'IGLESIA', 'MINISTRO', 
-                    'NOMBRE_REL', 'AÑO', 'IGLESIA_RESULTADO', 'AÑO_ULTIMO', 'ID'
+                    'NOMBRE_REL', 'AÑO', 'IGLESIA_RESULTADO', 'AÑO_ULTIMO', 'ID',
+                    'ESTUDIOS TEOLOGICOS', 'ESTUDIOS ACADEMICOS', col_foto
                 ]
+                
                 cols_info = st.columns(2)
+                # Filtrar campos visibles quitando sufijos de cruce y los excluidos
                 visible_fields = [f for f in data.index if f not in excluir and not f.endswith(('_X', '_Y', '_REL'))]
                 
                 for i, field in enumerate(visible_fields):
