@@ -6,9 +6,6 @@ from googleapiclient.http import MediaIoBaseDownload
 import pandas as pd
 import os
 import io
-import urllib.parse
-import time
-import re
 
 # --- CONFIGURACIÓN DE SEGURIDAD ---
 USUARIO_CORRECTO = "admin"
@@ -58,13 +55,11 @@ st.markdown("""
         border: 3px solid white;
         text-align: center;
         background: #f1f5f9;
-        margin-top: 10px;
-        display: block;
     }
     .img-container img {
         width: 100%;
         height: auto;
-        object-fit: cover;
+        display: block;
     }
     .section-header {
         color: #003366;
@@ -99,16 +94,19 @@ def check_password():
         st.markdown("</div>", unsafe_allow_html=True)
     return False
 
-def obtener_servicios():
+def conectar_servicios_google():
     scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
     if not os.path.exists("credenciales.json"):
         st.error("Archivo credenciales.json no encontrado")
         return None, None
     try:
         creds = Credentials.from_service_account_file("credenciales.json", scopes=scopes)
+        # Servicio para Sheets
         client = gspread.authorize(creds)
-        drive_service = build('drive', 'v3', credentials=creds)
         spreadsheet = client.open("BD MINISTROS")
+        # Servicio para Drive (Fotos)
+        drive_service = build('drive', 'v3', credentials=creds)
+        
         worksheets = (
             spreadsheet.worksheet("MINISTRO"), 
             spreadsheet.worksheet("IGLESIA"), 
@@ -122,44 +120,22 @@ def obtener_servicios():
         st.error(f"Error de conexión: {e}")
         return None, None
 
-def safe_get_dataframe(worksheet):
-    try:
-        data = worksheet.get_all_values()
-        if not data: return pd.DataFrame()
-        headers = data[0]
-        # Mantenemos las cabeceras originales pero limpias
-        clean_headers = [str(h).strip() for h in headers]
-        df = pd.DataFrame(data[1:], columns=clean_headers)
-        return df
-    except:
-        return pd.DataFrame()
-
-def descargar_imagen_bytes(drive_service, ruta_appsheet):
-    texto = str(ruta_appsheet).strip()
-    if not texto or texto.lower() in ["0", "nan", "none", "null", ""]:
+def descargar_foto_drive(drive_service, ruta_appsheet):
+    """Busca y descarga la imagen de Drive basándose en la ruta guardada por AppSheet."""
+    if not ruta_appsheet or str(ruta_appsheet).strip() == "":
         return None
-
     try:
-        # Extraer el nombre del archivo de la ruta de AppSheet
-        nombre_archivo = texto.split('/')[-1]
+        nombre_archivo = str(ruta_appsheet).split('/')[-1]
         query = f"name = '{nombre_archivo}' and trashed = false"
         results = drive_service.files().list(q=query, fields="files(id, name)").execute()
         items = results.get('files', [])
-
-        if not items:
-            # Intento de búsqueda parcial si falla la exacta
-            id_prefijo = nombre_archivo.split('.')[0]
-            query_parcial = f"name contains '{id_prefijo}' and trashed = false"
-            results = drive_service.files().list(q=query_parcial, fields="files(id, name)").execute()
-            items = results.get('files', [])
-
         if items:
             file_id = items[0]['id']
             request = drive_service.files().get_media(fileId=file_id)
             fh = io.BytesIO()
             downloader = MediaIoBaseDownload(fh, request)
             done = False
-            while done is False:
+            while not done:
                 status, done = downloader.next_chunk()
             fh.seek(0)
             return fh.read()
@@ -170,69 +146,83 @@ def descargar_imagen_bytes(drive_service, ruta_appsheet):
 def main():
     if not check_password(): st.stop()
 
-    sheets, drive_service = obtener_servicios()
-    if sheets and all(sheets):
-        # Carga de datos original (Tu lógica estable)
-        df_ministros = safe_get_dataframe(sheets[0])
-        df_relacion = safe_get_dataframe(sheets[1])
-        df_iglesias_cat = safe_get_dataframe(sheets[2])
-        df_est_teo_raw = safe_get_dataframe(sheets[3])
-        df_est_aca_raw = safe_get_dataframe(sheets[4])
-        df_revisiones_raw = safe_get_dataframe(sheets[5])
+    res_sheets, drive_service = conectar_servicios_google()
+    
+    if res_sheets and all(res_sheets):
+        sheet_m, sheet_rel, sheet_ig, sheet_est_teo, sheet_est_aca, sheet_rev = res_sheets
+        
+        # Cargar DataFrames
+        df_ministros = pd.DataFrame(sheet_m.get_all_records())
+        df_relacion = pd.DataFrame(sheet_rel.get_all_records())
+        df_iglesias_cat = pd.DataFrame(sheet_ig.get_all_records())
+        df_est_teo_raw = pd.DataFrame(sheet_est_teo.get_all_records())
+        df_est_aca_raw = pd.DataFrame(sheet_est_aca.get_all_records())
+        df_revisiones_raw = pd.DataFrame(sheet_rev.get_all_records())
 
-        if df_ministros.empty:
-            st.error("No se encontraron datos.")
-            st.stop()
-
-        # Tu lógica de procesamiento de columnas e IDs
-        id_col = 'ID_MINISTRO' if 'ID_MINISTRO' in df_ministros.columns else df_ministros.columns[0]
-        col_nombre = 'NOMBRE' if 'NOMBRE' in df_ministros.columns else df_ministros.columns[1]
+        # Limpieza estándar de nombres de columnas
+        for df in [df_ministros, df_relacion, df_iglesias_cat, df_est_teo_raw, df_est_aca_raw, df_revisiones_raw]:
+            df.columns = [c.strip().upper() for c in df.columns]
 
         try:
+            # Normalización (Tu lógica estable)
             df_relacion['AÑO'] = pd.to_numeric(df_relacion['AÑO'], errors='coerce').fillna(0)
-            rel_min_col = 'MINISTRO' if 'MINISTRO' in df_relacion.columns else df_relacion.columns[0]
-            df_rel_actual = df_relacion.sort_values(by=[rel_min_col, 'AÑO'], ascending=[True, False]).drop_duplicates(subset=[rel_min_col])
+            df_relacion['MINISTRO'] = df_relacion['MINISTRO'].astype(str).str.strip()
+            df_relacion['IGLESIA'] = df_relacion['IGLESIA'].astype(str).str.strip()
+            df_ministros['ID_MINISTRO'] = df_ministros['ID_MINISTRO'].astype(str).str.strip()
+            df_iglesias_cat['ID'] = df_iglesias_cat['ID'].astype(str).str.strip()
             
+            df_rel_actual = df_relacion.sort_values(by=['MINISTRO', 'AÑO'], ascending=[True, False]).drop_duplicates(subset=['MINISTRO'])
             df_rel_con_nombre = pd.merge(df_rel_actual, df_iglesias_cat[['ID', 'NOMBRE']], left_on='IGLESIA', right_on='ID', how='left')
-            df_final = pd.merge(df_ministros, df_rel_con_nombre[[rel_min_col, 'NOMBRE', 'AÑO']], left_on=id_col, right_on=rel_min_col, how='left', suffixes=('', '_REL'))
+            
+            df_final = pd.merge(df_ministros, df_rel_con_nombre[['MINISTRO', 'NOMBRE', 'AÑO']], left_on='ID_MINISTRO', right_on='MINISTRO', how='left', suffixes=('', '_REL'))
             df_final['IGLESIA_RESULTADO'] = df_final['NOMBRE_REL'].fillna("Sin Iglesia Asignada")
-            df_final['AÑO_ULTIMO'] = df_final['AÑO'].apply(lambda x: str(int(float(x))) if pd.notnull(x) and str(x) != '0.0' and str(x) != '0' else "N/A")
-        except:
+            df_final['AÑO_ULTIMO'] = df_final['AÑO'].apply(lambda x: int(x) if pd.notnull(x) and x > 0 else "N/A")
+
+        except Exception as e:
+            st.error(f"Error procesando datos: {e}")
             df_final = df_ministros.copy()
-            df_final['IGLESIA_RESULTADO'] = "Error al procesar"
+            df_final['IGLESIA_RESULTADO'] = "Error de Datos"
             df_final['AÑO_ULTIMO'] = "N/A"
 
+        # --- INTERFAZ ---
         st.markdown("<div class='header-container'><h1 class='main-title'>SIGEME</h1><p class='sub-title'>Distrito Sur Fronterizo</p></div>", unsafe_allow_html=True)
 
-        lista_ministros = sorted(df_final[col_nombre].unique().tolist())
+        col_busqueda = 'NOMBRE' if 'NOMBRE' in df_final.columns else df_final.columns[1]
+        lista_ministros = sorted(df_final[col_busqueda].unique().tolist())
+        
         st.markdown("<div class='content-box'>", unsafe_allow_html=True)
         seleccion = st.selectbox("Seleccione un Ministro:", ["-- Seleccionar --"] + lista_ministros)
 
         if seleccion != "-- Seleccionar --":
-            data = df_final[df_final[col_nombre] == seleccion].iloc[0]
-            current_id = str(data[id_col]).strip()
+            data = df_final[df_final[col_busqueda] == seleccion].iloc[0]
+            current_id = str(data['ID_MINISTRO'])
             
             c1, c2 = st.columns([1, 3])
             
             with c1:
                 st.markdown("### 👤 Fotografía")
-                # Integración de la lógica de fotografía
-                col_foto = next((c for c in data.index if any(x in c.upper() for x in ['FOTO', 'IMAGEN', 'FOTOGRAFIA'])), None)
+                col_foto = next((c for c in data.index if 'FOTO' in c or 'IMAGEN' in c), None)
                 
-                img_bytes = None
+                # --- INTEGRACIÓN DE FOTO REAL ---
+                img_data = None
                 if col_foto and drive_service:
-                    with st.spinner('Cargando imagen...'):
-                        img_bytes = descargar_imagen_bytes(drive_service, data[col_foto])
+                    with st.spinner('Cargando foto...'):
+                        img_data = descargar_foto_drive(drive_service, data[col_foto])
                 
-                if img_bytes:
+                if img_data:
                     st.markdown("<div class='img-container'>", unsafe_allow_html=True)
-                    st.image(img_bytes, use_container_width=True)
+                    st.image(img_data, use_container_width=True)
                     st.markdown("</div>", unsafe_allow_html=True)
                 else:
-                    st.markdown("<div class='img-container' style='padding: 50px 0;'><div style='font-size:6rem; color:#cbd5e1;'>👤</div><br><small style='color:#64748b;'>Imagen no disponible</small></div>", unsafe_allow_html=True)
+                    st.markdown("""
+                        <div class='img-container' style='padding: 40px 0;'>
+                            <div style='font-size:6rem; color:#cbd5e1;'>👤</div>
+                            <p style='color:#64748b; font-size:0.8rem;'>Sin fotografía</p>
+                        </div>
+                    """, unsafe_allow_html=True)
             
             with c2:
-                st.subheader(data[col_nombre])
+                st.subheader(data[col_busqueda])
                 st.markdown(f"""
                 <div class="profile-card" style="border-left: 6px solid #fbbf24; background: #fffbeb;">
                     <p style='margin:0; font-size:0.8rem; color:#92400e; font-weight:bold;'>IGLESIA ACTUAL (Gestión {data['AÑO_ULTIMO']})</p>
@@ -240,59 +230,59 @@ def main():
                 </div>
                 """, unsafe_allow_html=True)
 
-                excluir = [id_col, 'NOMBRE', 'IGLESIA', 'MINISTRO', 'NOMBRE_REL', 'AÑO', 'IGLESIA_RESULTADO', 'AÑO_ULTIMO', 'ID', col_foto]
+                excluir = ['ID_MINISTRO', 'NOMBRE', 'IGLESIA', 'MINISTRO', 'NOMBRE_REL', 'AÑO', 'IGLESIA_RESULTADO', 'AÑO_ULTIMO', 'ID', col_foto]
                 cols_info = st.columns(2)
                 visible_fields = [f for f in data.index if f not in excluir and not f.endswith(('_X', '_Y', '_REL'))]
                 
                 for i, field in enumerate(visible_fields):
                     with cols_info[i % 2]:
-                        val = str(data[field]).strip()
-                        display_val = val if val not in ["", "0", "nan", "None", "0.0"] else "---"
-                        st.markdown(f"""<div class="profile-card"><small style='color:#64748b; font-weight:600; text-transform:uppercase;'>{field}</small><br><span style='color:#0f172a; font-weight:500;'>{display_val}</span></div>""", unsafe_allow_html=True)
+                        st.markdown(f"""
+                        <div class="profile-card">
+                            <small style='color:#64748b; font-weight:600; text-transform:uppercase;'>{field}</small><br>
+                            <span style='color:#0f172a; font-weight:500;'>{data[field] if str(data[field]).strip() != "" else "---"}</span>
+                        </div>
+                        """, unsafe_allow_html=True)
 
-            # --- SECCIONES DE TABLAS (Tu lógica estable de filtrado) ---
-            st.markdown("<h3 class='section-header'>🎓 FORMACIÓN ACADÉMICA Y TEOLÓGICA</h3>", unsafe_allow_html=True)
-            est_col1, est_col2 = st.columns(2)
+            # --- SECCIONES DE TABLAS (Tu lógica original intacta) ---
+            st.markdown("<h3 class='section-header'>📝 HISTORIAL DE REVISIONES</h3>", unsafe_allow_html=True)
+            rev_min = df_revisiones_raw[df_revisiones_raw['MINISTRO'].astype(str) == current_id]
+            if not rev_min.empty:
+                rev_con_nombre = pd.merge(rev_min, df_iglesias_cat[['ID', 'NOMBRE']], left_on='IGLESIA', right_on='ID', how='left')
+                rev_con_nombre['IGLESIA_DISPLAY'] = rev_con_nombre['NOMBRE'].fillna(rev_con_nombre['IGLESIA'])
+                display_rev = rev_con_nombre[['IGLESIA_DISPLAY', 'FEC_REVISION', 'PROX_REVISION', 'STATUS']]
+                display_rev.columns = ['IGLESIA', 'FEC_REVISION', 'PROX_REVISION', 'STATUS']
+                st.dataframe(display_rev.sort_values(by='FEC_REVISION', ascending=False), use_container_width=True, hide_index=True)
+            else:
+                st.warning("No se encontraron registros de revisiones.")
+
+            st.markdown("<h3 class='section-header'>🏛️ HISTORIAL DE GESTIÓN EN IGLESIAS</h3>", unsafe_allow_html=True)
+            rel_hist = df_relacion[df_relacion['MINISTRO'].astype(str) == current_id]
+            if not rel_hist.empty:
+                rel_con_nombre = pd.merge(rel_hist, df_iglesias_cat[['ID', 'NOMBRE']], left_on='IGLESIA', right_on='ID', how='left')
+                display_rel = rel_con_nombre[['AÑO', 'NOMBRE', 'OBSERVACION']]
+                display_rel.columns = ['AÑO', 'NOMBRE DE IGLESIA', 'OBSERVACION']
+                st.dataframe(display_rel.sort_values(by='AÑO', ascending=False), use_container_width=True, hide_index=True)
+            else:
+                st.warning("No se encontró historial de iglesias.")
+
+            # Estudios Teológicos y Académicos
+            col_t1, col_t2 = st.columns(2)
+            with col_t1:
+                st.markdown("<h3 class='section-header'>📚 ESTUDIOS TEOLÓGICOS</h3>", unsafe_allow_html=True)
+                df_t = df_est_teo_raw[df_est_teo_raw['MINISTRO'].astype(str) == current_id]
+                if not df_t.empty:
+                    st.dataframe(df_t[['NIVEL', 'ESCUELA', 'PERIODO', 'CERTIFICADO']], use_container_width=True, hide_index=True)
+                else: st.info("Sin registros.")
             
-            with est_col1:
-                st.markdown("**Estudios Teológicos**")
-                # Filtro flexible para encontrar el ID del ministro en las tablas relacionadas
-                id_col_rel = next((c for c in df_est_teo_raw.columns if any(x in c.upper() for x in ['ID_MINISTRO', 'MINISTRO', 'ID'])), None)
-                if id_col_rel:
-                    df_teo = df_est_teo_raw[df_est_teo_raw[id_col_rel].astype(str).str.strip() == current_id]
-                    if not df_teo.empty:
-                        cols_mostrar = [c for c in ['NIVEL', 'INSTITUCION', 'ESTADO'] if c in df_teo.columns]
-                        st.dataframe(df_teo[cols_mostrar], use_container_width=True, hide_index=True)
-                    else: st.info("Sin registros teológicos.")
+            with col_t2:
+                st.markdown("<h3 class='section-header'>🎓 ESTUDIOS ACADÉMICOS</h3>", unsafe_allow_html=True)
+                df_a = df_est_aca_raw[df_est_aca_raw['MINISTRO'].astype(str) == current_id]
+                if not df_a.empty:
+                    st.dataframe(df_a[['NIVEL', 'ESCUELA', 'PERIODO', 'CERTIFICADO']], use_container_width=True, hide_index=True)
+                else: st.info("Sin registros.")
 
-            with est_col2:
-                st.markdown("**Estudios Académicos**")
-                id_col_rel_aca = next((c for c in df_est_aca_raw.columns if any(x in c.upper() for x in ['ID_MINISTRO', 'MINISTRO', 'ID'])), None)
-                if id_col_rel_aca:
-                    df_aca = df_est_aca_raw[df_est_aca_raw[id_col_rel_aca].astype(str).str.strip() == current_id]
-                    if not df_aca.empty:
-                        cols_mostrar = [c for c in ['NIVEL', 'TITULO', 'ESTADO'] if c in df_aca.columns]
-                        st.dataframe(df_aca[cols_mostrar], use_container_width=True, hide_index=True)
-                    else: st.info("Sin registros académicos.")
-
-            st.markdown("<h3 class='section-header'>📝 REVISIONES</h3>", unsafe_allow_html=True)
-            id_col_rev = next((c for c in df_revisiones_raw.columns if any(x in c.upper() for x in ['ID_MINISTRO', 'MINISTRO', 'ID'])), None)
-            if id_col_rev:
-                rev_min = df_revisiones_raw[df_revisiones_raw[id_col_rev].astype(str).str.strip() == current_id]
-                if not rev_min.empty:
-                    st.dataframe(rev_min[['IGLESIA', 'FEC_REVISION', 'STATUS']], use_container_width=True, hide_index=True)
-                else: st.info("Sin registros de revisión.")
-
-            st.markdown("<h3 class='section-header'>🏛️ GESTIÓN EN IGLESIAS</h3>", unsafe_allow_html=True)
-            rel_min_col_hist = next((c for c in df_relacion.columns if any(x in c.upper() for x in ['ID_MINISTRO', 'MINISTRO', 'ID'])), None)
-            if rel_min_col_hist:
-                rel_min_hist = df_relacion[df_relacion[rel_min_col_hist].astype(str).str.strip() == current_id].copy()
-                if not rel_min_hist.empty:
-                    # Mezclar con catálogo de iglesias para mostrar nombre
-                    rel_con_nombre = pd.merge(rel_min_hist, df_iglesias_cat[['ID', 'NOMBRE']], left_on='IGLESIA', right_on='ID', how='left', suffixes=('', '_CAT'))
-                    st.dataframe(rel_con_nombre[['AÑO', 'NOMBRE_CAT', 'OBSERVACION']].sort_values(by='AÑO', ascending=False), use_container_width=True, hide_index=True)
-                else: st.info("Sin historial de iglesias.")
-
+        else:
+            st.info("Utilice el buscador para localizar un ministro.")
         st.markdown("</div>", unsafe_allow_html=True)
 
 if __name__ == "__main__":
