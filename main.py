@@ -45,7 +45,7 @@ def conectar_google_sheets():
         
         # Nombres exactos del archivo y la pestaña
         nombre_archivo = "BD MINISTROS"
-        nombre_pestaña = "ministro"
+        nombre_pestaña = "MINISTRO"
         
         libro = client.open(nombre_archivo)
         
