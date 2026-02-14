@@ -151,14 +151,17 @@ def conectar_google_sheets():
     scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
     if not os.path.exists("credenciales.json"):
         st.error("❌ Error de sistema: Archivo de credenciales no detectado.")
-        return None
+        return None, None
     try:
         creds = Credentials.from_service_account_file("credenciales.json", scopes=scopes)
         client = gspread.authorize(creds)
-        return client.open("BD MINISTROS").worksheet("MINISTRO")
+        spreadsheet = client.open("BD MINISTROS")
+        sheet_ministro = spreadsheet.worksheet("MINISTRO")
+        sheet_iglesias = spreadsheet.worksheet("IGLESIAS")
+        return sheet_ministro, sheet_iglesias
     except Exception as e:
         st.error(f"Error de conexión: {e}")
-        return None
+        return None, None
 
 def main():
     if not check_password():
@@ -174,15 +177,38 @@ def main():
             st.rerun()
         st.markdown("### ⚙️ Panel de Filtros")
 
-    sheet = conectar_google_sheets()
+    sheet_m, sheet_i = conectar_google_sheets()
     
-    if sheet:
-        data = sheet.get_all_records()
-        df = pd.DataFrame(data)
+    if sheet_m and sheet_i:
+        df_ministros = pd.DataFrame(sheet_m.get_all_records())
+        df_iglesias = pd.DataFrame(sheet_i.get_all_records())
+
+        # --- LÓGICA DE RELACIÓN (Merge) ---
+        # Asumimos que en MINISTRO la columna se llama 'IGLESIA' (que tiene el ID)
+        # y en IGLESIAS la columna se llama 'ID_IGLESIA' y el nombre real es 'NOMBRE_IGLESIA'
+        # Ajustamos los nombres de columnas para el cruce si es necesario.
+        col_id_iglesia_en_m = 'IGLESIA'
+        col_id_iglesia_en_i = 'ID_IGLESIA'
+        col_nombre_real_iglesia = 'NOMBRE_IGLESIA' # Cambiar si el nombre en la pestaña IGLESIAS es distinto
+
+        if col_id_iglesia_en_m in df_ministros.columns and col_id_iglesia_en_i in df_iglesias.columns:
+            # Creamos una copia para no perder el ID original si se necesitara, pero priorizamos el nombre
+            df = pd.merge(
+                df_ministros, 
+                df_iglesias[[col_id_iglesia_en_i, col_nombre_real_iglesia]], 
+                left_on=col_id_iglesia_en_m, 
+                right_on=col_id_iglesia_en_i, 
+                how='left'
+            )
+            # Reemplazamos el valor de la columna IGLESIA por el nombre real encontrado
+            df['IGLESIA_NOMBRE_M'] = df[col_nombre_real_iglesia].fillna(df[col_id_iglesia_en_m])
+        else:
+            df = df_ministros.copy()
+            df['IGLESIA_NOMBRE_M'] = df['IGLESIA'] if 'IGLESIA' in df.columns else "N/A"
 
         # Filtros Sidebar
-        cols = df.columns.tolist()
-        sel_col = st.sidebar.selectbox("Agrupar por:", ["Ver Todo"] + cols)
+        cols_sidebar = df.columns.tolist()
+        sel_col = st.sidebar.selectbox("Agrupar por:", ["Ver Todo"] + cols_sidebar)
         df_view = df.copy()
         if sel_col != "Ver Todo":
             vals = df[sel_col].unique().tolist()
@@ -200,7 +226,7 @@ def main():
         """, unsafe_allow_html=True)
 
         # --- CÁLCULO DE MÉTRICAS ---
-        total_iglesias = df_view['IGLESIA'].nunique() if 'IGLESIA' in df_view.columns else 0
+        total_iglesias = df_view['IGLESIA_NOMBRE_M'].nunique()
         
         def contar_categoria(dataframe, texto):
             mask = dataframe.apply(lambda x: x.astype(str).str.contains(texto, case=False, na=False)).any(axis=1)
@@ -238,12 +264,9 @@ def main():
             col_img_text, col_profile = st.columns([1, 3])
             
             with col_img_text:
-                # Buscamos la columna de fotografía
                 col_foto_key = next((c for c in df.columns if 'FOTOGRAFIA' in c.upper() or 'FOTO' in c.upper()), None)
                 if col_foto_key and ministro_data[col_foto_key]:
                     ruta_foto = str(ministro_data[col_foto_key])
-                    
-                    # Intentar cargar imagen
                     if os.path.exists(ruta_foto):
                         st.image(ruta_foto, use_container_width=True, caption=nombre_sel)
                     else:
@@ -259,14 +282,30 @@ def main():
             with col_profile:
                 st.markdown(f"## {nombre_sel}")
                 
-                # Campos a excluir
-                excluir = ['ID_MINISTRO', 'ESTUDIOS TEOLOGICOS', 'ESTUDIOS ACADEMICOS', col_foto_key, col_nombre]
+                # Campos a excluir o limpiar de la vista
+                # Quitamos las columnas técnicas del merge y los IDs solicitados anteriormente
+                excluir = [
+                    'ID_MINISTRO', 'ESTUDIOS TEOLOGICOS', 'ESTUDIOS ACADEMICOS', 
+                    col_foto_key, col_nombre, col_id_iglesia_en_i, col_nombre_real_iglesia,
+                    col_id_iglesia_en_m # Quitamos el ID de la iglesia para mostrar solo el nombre relacionado
+                ]
                 
                 # Rejilla de información
                 m_cols = st.columns(2)
                 idx_display = 0
+                
+                # Mostramos primero la Iglesia vinculada de forma destacada
+                with m_cols[0]:
+                    st.markdown(f"""
+                    <div class="profile-card" style="border-left: 6px solid #fbbf24;">
+                        <p style='color: #64748b; font-size: 0.8rem; margin:0; text-transform: uppercase;'>IGLESIA</p>
+                        <p style='color: #003366; font-weight: 800; margin:0; font-size: 1.2rem;'>{ministro_data['IGLESIA_NOMBRE_M']}</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                idx_display = 1
+
                 for col_key, col_val in ministro_data.items():
-                    if col_key.upper() not in [e.upper() for e in excluir]:
+                    if col_key.upper() not in [e.upper() for e in excluir] and col_key != 'IGLESIA_NOMBRE_M':
                         with m_cols[idx_display % 2]:
                             st.markdown(f"""
                             <div class="profile-card">
@@ -277,7 +316,6 @@ def main():
                         idx_display += 1
             
             st.markdown("<br>", unsafe_allow_html=True)
-            # Botón para exportar solo este ministro si se desea
             csv_single = pd.DataFrame([ministro_data]).to_csv(index=False).encode('utf-8')
             st.download_button(f"📥 Descargar Ficha de {nombre_sel}", csv_single, f"ficha_{nombre_sel}.csv", "text/csv")
 
