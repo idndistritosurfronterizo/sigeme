@@ -142,24 +142,30 @@ def descargar_imagen_bytes(drive_service, ruta_appsheet):
         return None
 
     try:
-        # Extraer solo el nombre real del archivo
+        # Extraer nombre del archivo (8a6f4843.FOTOGRAFIA.184936.jpg)
         nombre_archivo = texto.split('/')[-1]
         
-        # Búsqueda rigurosa
+        # 1. Búsqueda exacta
         query = f"name = '{nombre_archivo}' and trashed = false"
         results = drive_service.files().list(q=query, fields="files(id, name)").execute()
         items = results.get('files', [])
 
-        # Si no hay coincidencia exacta, buscar por la parte inicial del ID
+        # 2. Si falla, búsqueda por nombre parcial (contiene el ID de AppSheet)
         if not items:
             id_prefijo = nombre_archivo.split('.')[0]
             query_parcial = f"name contains '{id_prefijo}' and trashed = false"
             results = drive_service.files().list(q=query_parcial, fields="files(id, name)").execute()
             items = results.get('files', [])
 
+        # 3. Si sigue fallando, buscar archivos que tengan el mismo nombre sin importar extensiones
+        if not items:
+            solo_nombre = nombre_archivo.rsplit('.', 1)[0]
+            query_nombre = f"name contains '{solo_nombre}' and trashed = false"
+            results = drive_service.files().list(q=query_nombre, fields="files(id, name)").execute()
+            items = results.get('files', [])
+
         if items:
             file_id = items[0]['id']
-            # Intentar descarga
             request = drive_service.files().get_media(fileId=file_id)
             fh = io.BytesIO()
             downloader = MediaIoBaseDownload(fh, request)
@@ -170,7 +176,6 @@ def descargar_imagen_bytes(drive_service, ruta_appsheet):
             return fh.read()
             
     except Exception as e:
-        # Silencioso en producción pero capturado en depuración
         return None
     return None
 
@@ -218,12 +223,11 @@ def main():
             
             with c1:
                 st.markdown("### 👤 Fotografía")
-                # Identificar la columna de imagen
                 col_foto = next((c for c in data.index if any(x in c for x in ['FOTO', 'IMAGEN', 'FOTOGRAFIA'])), None)
                 
                 img_bytes = None
                 if col_foto and drive_service:
-                    with st.spinner('Buscando foto en Drive...'):
+                    with st.spinner('Buscando foto...'):
                         img_bytes = descargar_imagen_bytes(drive_service, data[col_foto])
                 
                 st.markdown("<div class='img-container'>", unsafe_allow_html=True)
@@ -233,7 +237,7 @@ def main():
                     st.markdown("<div style='font-size:6rem; color:#cbd5e1;'>👤</div>", unsafe_allow_html=True)
                     st.caption("Imagen no encontrada")
                     if col_foto:
-                        st.info(f"Ruta buscada: {data[col_foto]}")
+                        st.info(f"Ruta en tabla: {data[col_foto]}")
                 st.markdown("</div>", unsafe_allow_html=True)
             
             with c2:
