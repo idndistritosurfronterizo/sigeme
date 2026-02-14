@@ -3,6 +3,7 @@ import gspread
 from google.oauth2.service_account import Credentials
 import pandas as pd
 import os
+import urllib.parse
 
 # --- CONFIGURACIÓN DE SEGURIDAD ---
 USUARIO_CORRECTO = "admin"
@@ -10,8 +11,8 @@ PASSWORD_CORRECTO = "ministros2024"
 
 # --- CONFIGURACIÓN APPSHEET (Para visualizar fotos) ---
 # Puedes obtener estos datos en el editor de AppSheet: Manage -> Integrations -> Cloud Services
-APPSHEET_APP_ID = "32c8e6c2-fc2a-4dd9-97e7-2d0cdb2af68e" # Pega aquí tu App ID de AppSheet
-APPSHEET_ACCESS_KEY = "V2-aH1dw-B1NeU-AkHMn-VW2ki-X4fcl-rVxWT-pgY26-NT1xZ" # Pega aquí tu Access Key
+APPSHEET_APP_ID = "32c8e6c2-fc2a-4dd9-97e7-2d0cdb2af68e" 
+APPSHEET_ACCESS_KEY = "V2-aH1dw-B1NeU-AkHMn-VW2ki-X4fcl-rVxWT-pgY26-NT1xZ" 
 
 # --- CONFIGURACIÓN DE LA PÁGINA ---
 st.set_page_config(
@@ -124,17 +125,19 @@ def conectar_google_sheets():
 
 def obtener_url_imagen(ruta_relativa, nombre_tabla):
     """
-    Convierte la ruta de AppSheet en una URL que Streamlit puede mostrar.
-    Requiere APPSHEET_APP_ID y APPSHEET_ACCESS_KEY.
+    Convierte la ruta de AppSheet en una URL válida.
     """
     if not APPSHEET_APP_ID or not APPSHEET_ACCESS_KEY:
         return None
     
-    # URL base para obtener archivos de AppSheet
-    # Formato: https://www.appsheet.com/template/gettablefileurl?appName=APP_ID&tableName=TABLE_NAME&fileName=FILE_PATH
-    import urllib.parse
-    encoded_path = urllib.parse.quote(ruta_relativa)
-    url = f"https://www.appsheet.com/template/gettablefileurl?appName={APPSHEET_APP_ID}&tableName={nombre_tabla}&fileName={encoded_path}"
+    # Limpiar la ruta por si viene con espacios o caracteres extraños
+    ruta_limpia = str(ruta_relativa).strip()
+    if not ruta_limpia or ruta_limpia == "0" or ruta_limpia == "nan":
+        return None
+
+    encoded_path = urllib.parse.quote(ruta_limpia)
+    # AppSheet requiere el AccessKey para servir la imagen si la app no es pública
+    url = f"https://www.appsheet.com/template/gettablefileurl?appName={APPSHEET_APP_ID}&tableName={nombre_tabla}&fileName={encoded_path}&applicationAccessKey={APPSHEET_ACCESS_KEY}"
     return url
 
 def main():
@@ -205,21 +208,25 @@ def main():
                 st.markdown("### 👤 Fotografía")
                 col_foto = next((c for c in data.index if 'FOTO' in c or 'IMAGEN' in c), None)
                 
-                if col_foto and str(data[col_foto]).strip() != "":
-                    ruta_archivo = str(data[col_foto])
-                    # Intentamos generar la URL de AppSheet
-                    url_foto = obtener_url_imagen(ruta_archivo, "MINISTRO")
-                    
-                    st.markdown("<div class='img-container'>", unsafe_allow_html=True)
-                    if url_foto:
-                        # Usamos st.image para renderizar la URL construida
+                url_foto = None
+                if col_foto:
+                    valor_celda = str(data[col_foto]).strip()
+                    if valor_celda and valor_celda not in ["0", "nan", "None", ""]:
+                        url_foto = obtener_url_imagen(valor_celda, "MINISTRO")
+                
+                st.markdown("<div class='img-container'>", unsafe_allow_html=True)
+                if url_foto:
+                    # Se intenta cargar la imagen. Si falla, Streamlit mostrará un área vacía o error controlado.
+                    try:
                         st.image(url_foto, use_container_width=True)
-                    else:
+                    except:
                         st.markdown("<div style='font-size:6rem;'>👤</div>", unsafe_allow_html=True)
-                        st.info("Configura APPSHEET_APP_ID para ver fotos")
-                    st.markdown("</div>", unsafe_allow_html=True)
+                        st.caption("No se pudo cargar la imagen")
                 else:
-                    st.markdown("<div class='img-container'><div style='font-size:6rem;'>👤</div></div>", unsafe_allow_html=True)
+                    st.markdown("<div style='font-size:6rem;'>👤</div>", unsafe_allow_html=True)
+                    if col_foto and str(data[col_foto]).strip() in ["0", ""]:
+                        st.caption("Sin fotografía registrada")
+                st.markdown("</div>", unsafe_allow_html=True)
             
             with c2:
                 st.subheader(data[col_busqueda])
@@ -236,7 +243,7 @@ def main():
                 
                 for i, field in enumerate(visible_fields):
                     with cols_info[i % 2]:
-                        st.markdown(f"""<div class="profile-card"><small style='color:#64748b; font-weight:600; text-transform:uppercase;'>{field}</small><br><span style='color:#0f172a; font-weight:500;'>{data[field] if str(data[field]).strip() != "" else "---"}</span></div>""", unsafe_allow_html=True)
+                        st.markdown(f"""<div class="profile-card"><small style='color:#64748b; font-weight:600; text-transform:uppercase;'>{field}</small><br><span style='color:#0f172a; font-weight:500;'>{data[field] if str(data[field]).strip() not in ["", "0", "nan"] else "---"}</span></div>""", unsafe_allow_html=True)
 
             # --- SECCIONES ORDENADAS ---
             st.markdown("<h3 class='section-header'>📝 HISTORIAL DE REVISIONES</h3>", unsafe_allow_html=True)
