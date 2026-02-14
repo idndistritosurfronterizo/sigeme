@@ -127,11 +127,10 @@ def safe_get_dataframe(worksheet):
         data = worksheet.get_all_values()
         if not data: return pd.DataFrame()
         headers = data[0]
-        # Limpieza profunda de cabeceras para evitar KeyError
         clean_headers = [str(h).strip().upper() if h.strip() else f"COL_{i}" for i, h in enumerate(headers)]
         df = pd.DataFrame(data[1:], columns=clean_headers)
-        # Limpiar espacios en los datos también
-        return df.apply(lambda x: x.str.strip() if x.dtype == "object" else x)
+        # Convertimos todo a string para evitar conflictos de tipos en las comparaciones
+        return df.apply(lambda x: x.astype(str).str.strip() if x.dtype == "object" else x.astype(str))
     except:
         return pd.DataFrame()
 
@@ -182,20 +181,18 @@ def main():
             st.error("No se encontraron datos en la tabla MINISTRO.")
             st.stop()
 
-        # Identificar columna de ID dinámicamente
         id_col = 'ID_MINISTRO' if 'ID_MINISTRO' in df_ministros.columns else df_ministros.columns[0]
         col_nombre = 'NOMBRE' if 'NOMBRE' in df_ministros.columns else df_ministros.columns[1]
 
         try:
             df_relacion['AÑO'] = pd.to_numeric(df_relacion['AÑO'], errors='coerce').fillna(0)
-            # Buscar columna de link en relación
             rel_min_col = 'MINISTRO' if 'MINISTRO' in df_relacion.columns else df_relacion.columns[0]
             df_rel_actual = df_relacion.sort_values(by=[rel_min_col, 'AÑO'], ascending=[True, False]).drop_duplicates(subset=[rel_min_col])
             
             df_rel_con_nombre = pd.merge(df_rel_actual, df_iglesias_cat[['ID', 'NOMBRE']], left_on='IGLESIA', right_on='ID', how='left')
             df_final = pd.merge(df_ministros, df_rel_con_nombre[[rel_min_col, 'NOMBRE', 'AÑO']], left_on=id_col, right_on=rel_min_col, how='left', suffixes=('', '_REL'))
             df_final['IGLESIA_RESULTADO'] = df_final['NOMBRE_REL'].fillna("Sin Iglesia Asignada")
-            df_final['AÑO_ULTIMO'] = df_final['AÑO'].apply(lambda x: int(x) if pd.notnull(x) and x > 0 else "N/A")
+            df_final['AÑO_ULTIMO'] = df_final['AÑO'].apply(lambda x: str(int(float(x))) if pd.notnull(x) and str(x) != '0.0' and str(x) != '0' else "N/A")
         except:
             df_final = df_ministros.copy()
             df_final['IGLESIA_RESULTADO'] = "Error al procesar"
@@ -209,7 +206,7 @@ def main():
 
         if seleccion != "-- Seleccionar --":
             data = df_final[df_final[col_nombre] == seleccion].iloc[0]
-            current_id = str(data[id_col])
+            current_id = str(data[id_col]).strip()
             
             c1, c2 = st.columns([1, 3])
             
@@ -245,40 +242,39 @@ def main():
                 for i, field in enumerate(visible_fields):
                     with cols_info[i % 2]:
                         val = str(data[field]).strip()
-                        display_val = val if val not in ["", "0", "nan", "None"] else "---"
+                        display_val = val if val not in ["", "0", "nan", "None", "0.0"] else "---"
                         st.markdown(f"""<div class="profile-card"><small style='color:#64748b; font-weight:600; text-transform:uppercase;'>{field}</small><br><span style='color:#0f172a; font-weight:500;'>{display_val}</span></div>""", unsafe_allow_html=True)
 
-            # --- SECCIONES DE ESTUDIOS CON SOLUCIÓN A KEYERROR ---
             st.markdown("<h3 class='section-header'>🎓 FORMACIÓN ACADÉMICA Y TEOLÓGICA</h3>", unsafe_allow_html=True)
             est_col1, est_col2 = st.columns(2)
             
             with est_col1:
                 st.markdown("**Estudios Teológicos**")
-                # Buscar columna que contenga ID o MINISTRO para filtrar
-                id_col_teo = next((c for c in df_est_teo_raw.columns if any(x in c for x in ['ID', 'MINISTRO'])), None)
+                id_col_teo = next((c for c in df_est_teo_raw.columns if any(x in c for x in ['ID_MINISTRO', 'MINISTRO', 'ID'])), None)
                 if id_col_teo:
-                    df_teo = df_est_teo_raw[df_est_teo_raw[id_col_teo] == current_id]
+                    # Filtro robusto convirtiendo ambos a string
+                    df_teo = df_est_teo_raw[df_est_teo_raw[id_col_teo].astype(str).str.strip() == current_id]
                     if not df_teo.empty:
                         cols_mostrar = [c for c in ['NIVEL', 'INSTITUCION', 'ESTADO'] if c in df_teo.columns]
                         st.dataframe(df_teo[cols_mostrar], use_container_width=True, hide_index=True)
                     else: st.info("Sin registros teológicos.")
-                else: st.warning("Columna de ID no encontrada en Estudios Teológicos.")
+                else: st.warning("Columna de ID no encontrada.")
 
             with est_col2:
                 st.markdown("**Estudios Académicos**")
-                id_col_aca = next((c for c in df_est_aca_raw.columns if any(x in c for x in ['ID', 'MINISTRO'])), None)
+                id_col_aca = next((c for c in df_est_aca_raw.columns if any(x in c for x in ['ID_MINISTRO', 'MINISTRO', 'ID'])), None)
                 if id_col_aca:
-                    df_aca = df_est_aca_raw[df_est_aca_raw[id_col_aca] == current_id]
+                    df_aca = df_est_aca_raw[df_est_aca_raw[id_col_aca].astype(str).str.strip() == current_id]
                     if not df_aca.empty:
                         cols_mostrar = [c for c in ['NIVEL', 'TITULO', 'ESTADO'] if c in df_aca.columns]
                         st.dataframe(df_aca[cols_mostrar], use_container_width=True, hide_index=True)
                     else: st.info("Sin registros académicos.")
-                else: st.warning("Columna de ID no encontrada en Estudios Académicos.")
+                else: st.warning("Columna de ID no encontrada.")
 
             st.markdown("<h3 class='section-header'>📝 REVISIONES</h3>", unsafe_allow_html=True)
-            id_col_rev = next((c for c in df_revisiones_raw.columns if any(x in c for x in ['ID', 'MINISTRO'])), None)
+            id_col_rev = next((c for c in df_revisiones_raw.columns if any(x in c for x in ['ID_MINISTRO', 'MINISTRO', 'ID'])), None)
             if id_col_rev:
-                rev_min = df_revisiones_raw[df_revisiones_raw[id_col_rev] == current_id]
+                rev_min = df_revisiones_raw[df_revisiones_raw[id_col_rev].astype(str).str.strip() == current_id]
                 if not rev_min.empty:
                     rev_con_nombre = pd.merge(rev_min, df_iglesias_cat[['ID', 'NOMBRE']], left_on='IGLESIA', right_on='ID', how='left')
                     rev_con_nombre['IGLESIA_DISPLAY'] = rev_con_nombre['NOMBRE'].fillna(rev_con_nombre['IGLESIA'])
@@ -286,9 +282,9 @@ def main():
                 else: st.info("Sin registros de revisión.")
 
             st.markdown("<h3 class='section-header'>🏛️ GESTIÓN EN IGLESIAS</h3>", unsafe_allow_html=True)
-            rel_min_col = next((c for c in df_relacion.columns if any(x in c for x in ['ID', 'MINISTRO'])), None)
-            if rel_min_col:
-                rel_min = df_relacion[df_relacion[rel_min_col] == current_id].copy()
+            rel_min_col_hist = next((c for c in df_relacion.columns if any(x in c for x in ['ID_MINISTRO', 'MINISTRO', 'ID'])), None)
+            if rel_min_col_hist:
+                rel_min = df_relacion[df_relacion[rel_min_col_hist].astype(str).str.strip() == current_id].copy()
                 if not rel_min.empty:
                     rel_con_nombre = pd.merge(rel_min, df_iglesias_cat[['ID', 'NOMBRE']], left_on='IGLESIA', right_on='ID', how='left')
                     st.dataframe(rel_con_nombre[['AÑO', 'NOMBRE', 'OBSERVACION']].sort_values(by='AÑO', ascending=False), use_container_width=True, hide_index=True)
