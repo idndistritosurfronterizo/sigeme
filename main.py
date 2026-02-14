@@ -2,8 +2,10 @@ import streamlit as st
 import gspread
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
+from googleapiclient.http import MediaIoBaseDownload
 import pandas as pd
 import os
+import io
 import urllib.parse
 import time
 import re
@@ -131,25 +133,22 @@ def safe_get_dataframe(worksheet):
     clean_headers = [h.strip().upper() if h.strip() else f"COL_{i}" for i, h in enumerate(headers)]
     return pd.DataFrame(data[1:], columns=clean_headers)
 
-def buscar_imagen_drive(drive_service, ruta_appsheet):
+def descargar_imagen_bytes(drive_service, ruta_appsheet):
     """
-    Busca el ID del archivo en Drive usando el nombre que AppSheet guardó.
+    Descarga la imagen directamente desde Drive usando la API y retorna los bytes.
     """
     texto = str(ruta_appsheet).strip()
     if not texto or texto.lower() in ["0", "nan", "none", "null", ""]:
         return None
 
     try:
-        # Extraer solo el nombre del archivo eliminando la carpeta 'MINISTRO_Images/'
-        # Si el texto es 'MINISTRO_Images/8a6f4843.FOTOGRAFIA.184936.jpg', nombre_archivo será '8a6f4843.FOTOGRAFIA.184936.jpg'
         nombre_archivo = texto.split('/')[-1]
         
-        # Búsqueda exacta por nombre
+        # Búsqueda del archivo
         query = f"name = '{nombre_archivo}' and trashed = false"
         results = drive_service.files().list(q=query, fields="files(id, name)").execute()
         items = results.get('files', [])
 
-        # Si falla la búsqueda exacta, intentamos con el ID parcial
         if not items:
             id_prefijo = nombre_archivo.split('.')[0]
             query_parcial = f"name contains '{id_prefijo}' and trashed = false"
@@ -157,9 +156,16 @@ def buscar_imagen_drive(drive_service, ruta_appsheet):
             items = results.get('files', [])
 
         if items:
-            drive_id = items[0]['id']
-            # Usamos el enlace de visualización directa (thumbnail) con alta calidad
-            return f"https://drive.google.com/thumbnail?id={drive_id}&sz=w1000"
+            file_id = items[0]['id']
+            # Descarga real de los bytes del archivo
+            request = drive_service.files().get_media(fileId=file_id)
+            fh = io.BytesIO()
+            downloader = MediaIoBaseDownload(fh, request)
+            done = False
+            while done is False:
+                status, done = downloader.next_chunk()
+            fh.seek(0)
+            return fh.read()
             
     except Exception as e:
         return None
@@ -211,13 +217,13 @@ def main():
                 st.markdown("### 👤 Fotografía")
                 col_foto = next((c for c in data.index if any(x in c for x in ['FOTO', 'IMAGEN', 'FOTOGRAFIA'])), None)
                 
-                url_foto = None
+                img_bytes = None
                 if col_foto and drive_service:
-                    url_foto = buscar_imagen_drive(drive_service, data[col_foto])
+                    img_bytes = descargar_imagen_bytes(drive_service, data[col_foto])
                 
                 st.markdown("<div class='img-container'>", unsafe_allow_html=True)
-                if url_foto:
-                    st.image(url_foto, use_container_width=True)
+                if img_bytes:
+                    st.image(img_bytes, use_container_width=True)
                 else:
                     st.markdown("<div style='font-size:6rem; color:#cbd5e1;'>👤</div>", unsafe_allow_html=True)
                     st.caption("Imagen no encontrada")
