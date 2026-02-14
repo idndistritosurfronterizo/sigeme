@@ -104,6 +104,7 @@ st.markdown("""
         border-radius: 15px;
         padding: 20px;
         margin-top: 10px;
+        min-height: 80px;
     }
 
     /* Sidebar */
@@ -154,7 +155,6 @@ def conectar_google_sheets():
     try:
         creds = Credentials.from_service_account_file("credenciales.json", scopes=scopes)
         client = gspread.authorize(creds)
-        # Cambia el nombre si el archivo en Drive se llama distinto
         return client.open("BD MINISTROS").worksheet("MINISTRO")
     except Exception as e:
         st.error(f"Error de conexión: {e}")
@@ -199,11 +199,9 @@ def main():
             </div>
         """, unsafe_allow_html=True)
 
-        # --- CÁLCULO DE MÉTRICAS CORREGIDO ---
-        # Se busca "PRESBITERO" (sin tilde y mayúsculas) en todo el dataframe
+        # --- CÁLCULO DE MÉTRICAS ---
         total_iglesias = df_view['IGLESIA'].nunique() if 'IGLESIA' in df_view.columns else 0
         
-        # Función auxiliar para contar categorías ignorando tildes y mayúsculas
         def contar_categoria(dataframe, texto):
             mask = dataframe.apply(lambda x: x.astype(str).str.contains(texto, case=False, na=False)).any(axis=1)
             return len(dataframe[mask])
@@ -259,27 +257,57 @@ def main():
             st.markdown('<div class="content-box">', unsafe_allow_html=True)
             st.subheader("Buscador de Ministro")
             
-            # Buscamos la columna de nombres (asumiendo que se llama NOMBRE o similar)
             col_nombre = next((c for c in df.columns if 'NOMBRE' in c.upper()), df.columns[0])
-            
             lista_nombres = sorted(df[col_nombre].unique().tolist())
             nombre_sel = st.selectbox("Seleccione un Ministro para ver detalles:", ["-- Seleccionar --"] + lista_nombres)
             
             if nombre_sel != "-- Seleccionar --":
                 ministro_data = df[df[col_nombre] == nombre_sel].iloc[0]
                 
-                st.markdown(f"### Detalle: {nombre_sel}")
+                # --- GESTIÓN DE FOTOGRAFÍA ---
+                col_img_text, col_profile = st.columns([1, 3])
                 
-                # Crear una rejilla para mostrar los datos del ministro
-                m_cols = st.columns(3)
-                for i, (col_key, col_val) in enumerate(ministro_data.items()):
-                    with m_cols[i % 3]:
-                        st.markdown(f"""
-                        <div class="profile-card">
-                            <p style='color: #64748b; font-size: 0.8rem; margin:0;'>{col_key}</p>
-                            <p style='color: #003366; font-weight: 600; margin:0;'>{col_val}</p>
-                        </div>
-                        """, unsafe_allow_html=True)
+                with col_img_text:
+                    # Buscamos la columna de fotografía
+                    col_foto_key = next((c for c in df.columns if 'FOTOGRAFIA' in c.upper() or 'FOTO' in c.upper()), None)
+                    if col_foto_key and ministro_data[col_foto_key]:
+                        ruta_foto = str(ministro_data[col_foto_key])
+                        # Si es una ruta de AppSheet, intentamos mostrarla. 
+                        # Nota: Esto requiere que la carpeta de imágenes esté accesible o sea una URL.
+                        # Aquí intentamos cargarla como imagen local si existe o mostrar el placeholder.
+                        if os.path.exists(ruta_foto):
+                            st.image(ruta_foto, use_container_width=True, caption=nombre_sel)
+                        else:
+                            # Si es texto de ruta relativa, mostramos un icono de usuario profesional
+                            st.markdown(f"""
+                                <div style='background: #e2e8f0; border-radius: 15px; height: 200px; display: flex; align-items: center; justify-content: center;'>
+                                    <span style='font-size: 5rem;'>👤</span>
+                                </div>
+                                <p style='text-align:center; font-size:0.8rem; color:#64748b;'>Ruta: {ruta_foto}</p>
+                            """, unsafe_allow_html=True)
+                    else:
+                        st.markdown("<div style='background:#f1f5f9; height:200px; border-radius:15px; display:flex; align-items:center; justify-content:center;'>👤 Sin Foto</div>", unsafe_allow_html=True)
+
+                with col_profile:
+                    st.markdown(f"## {nombre_sel}")
+                    
+                    # Campos a excluir de la vista de tarjetas
+                    excluir = ['ID_MINISTRO', 'ESTUDIOS TEOLOGICOS', 'ESTUDIOS ACADEMICOS', col_foto_key, col_nombre]
+                    
+                    # Crear una rejilla para mostrar los datos restantes del ministro
+                    m_cols = st.columns(2)
+                    idx_display = 0
+                    for col_key, col_val in ministro_data.items():
+                        # Normalizamos el nombre de la columna para comparar
+                        if col_key.upper() not in [e.upper() for e in excluir]:
+                            with m_cols[idx_display % 2]:
+                                st.markdown(f"""
+                                <div class="profile-card">
+                                    <p style='color: #64748b; font-size: 0.8rem; margin:0; text-transform: uppercase; letter-spacing: 0.5px;'>{col_key}</p>
+                                    <p style='color: #003366; font-weight: 600; margin:0; font-size: 1.1rem;'>{col_val if col_val != "" else "---"}</p>
+                                </div>
+                                """, unsafe_allow_html=True)
+                            idx_display += 1
             else:
                 st.info("Seleccione un nombre del buscador para desplegar su ficha ministerial.")
             st.markdown('</div>', unsafe_allow_html=True)
