@@ -90,7 +90,7 @@ def conectar_google_sheets():
     scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
     if not os.path.exists("credenciales.json"):
         st.error("Archivo credenciales.json no encontrado")
-        return None, None, None, None, None
+        return None
     try:
         creds = Credentials.from_service_account_file("credenciales.json", scopes=scopes)
         client = gspread.authorize(creds)
@@ -100,18 +100,19 @@ def conectar_google_sheets():
             spreadsheet.worksheet("IGLESIA"), 
             spreadsheet.worksheet("IGLESIAS"),
             spreadsheet.worksheet("ESTUDIOS TEOLOGICOS"),
-            spreadsheet.worksheet("ESTUDIOS ACADEMICOS")
+            spreadsheet.worksheet("ESTUDIOS ACADEMICOS"),
+            spreadsheet.worksheet("Revision")
         )
     except Exception as e:
         st.error(f"Error de conexión: {e}")
-        return None, None, None, None, None
+        return None
 
 def main():
     if not check_password(): st.stop()
 
     res = conectar_google_sheets()
     if res and all(res):
-        sheet_m, sheet_rel, sheet_ig, sheet_est_teo, sheet_est_aca = res
+        sheet_m, sheet_rel, sheet_ig, sheet_est_teo, sheet_est_aca, sheet_rev = res
         
         # Cargar DataFrames
         df_ministros = pd.DataFrame(sheet_m.get_all_records())
@@ -119,6 +120,7 @@ def main():
         df_iglesias_cat = pd.DataFrame(sheet_ig.get_all_records())
         df_est_teo_raw = pd.DataFrame(sheet_est_teo.get_all_records())
         df_est_aca_raw = pd.DataFrame(sheet_est_aca.get_all_records())
+        df_revisiones_raw = pd.DataFrame(sheet_rev.get_all_records())
 
         # Limpieza estándar de nombres de columnas
         df_ministros.columns = [c.strip().upper() for c in df_ministros.columns]
@@ -126,6 +128,7 @@ def main():
         df_iglesias_cat.columns = [c.strip().upper() for c in df_iglesias_cat.columns]
         df_est_teo_raw.columns = [c.strip().upper() for c in df_est_teo_raw.columns]
         df_est_aca_raw.columns = [c.strip().upper() for c in df_est_aca_raw.columns]
+        df_revisiones_raw.columns = [c.strip().upper() for c in df_revisiones_raw.columns]
 
         try:
             # Normalizar tipos de datos para cruces
@@ -140,6 +143,7 @@ def main():
             
             df_est_teo_raw['MINISTRO'] = df_est_teo_raw['MINISTRO'].astype(str).str.strip()
             df_est_aca_raw['MINISTRO'] = df_est_aca_raw['MINISTRO'].astype(str).str.strip()
+            df_revisiones_raw['MINISTRO'] = df_revisiones_raw['MINISTRO'].astype(str).str.strip()
 
             # 1. Obtener el registro con el MAX(AÑO) por cada ministro
             df_rel_ordenada = df_relacion.sort_values(by=['MINISTRO', 'AÑO'], ascending=[True, False])
@@ -252,6 +256,17 @@ def main():
                 st.dataframe(display_aca, use_container_width=True, hide_index=True)
             else:
                 st.warning("No se encontraron registros de estudios académicos para este ministro.")
+
+            # --- SECCIÓN: REVISIÓN ---
+            st.markdown("<h3 class='section-header'>📝 HISTORIAL DE REVISIONES</h3>", unsafe_allow_html=True)
+            
+            rev_min = df_revisiones_raw[df_revisiones_raw['MINISTRO'] == current_id]
+            if not rev_min.empty:
+                # Mostrar columnas: ID_REVISION, IGLESIA, FEC_REVISION, PROX_REVISION, STATUS
+                display_rev = rev_min[['ID_REVISION', 'IGLESIA', 'FEC_REVISION', 'PROX_REVISION', 'STATUS']].copy()
+                st.dataframe(display_rev, use_container_width=True, hide_index=True)
+            else:
+                st.warning("No se encontraron registros de revisiones para este ministro.")
 
         else:
             st.info("Utilice el buscador para localizar un ministro y ver su historial de gestión.")
