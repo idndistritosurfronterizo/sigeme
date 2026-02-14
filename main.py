@@ -239,6 +239,31 @@ def main():
                         </div>
                         """, unsafe_allow_html=True)
 
+            # --- SECCIÓN: REVISIÓN (AHORA EN PRIMER LUGAR) ---
+            st.markdown("<h3 class='section-header'>📝 HISTORIAL DE REVISIONES</h3>", unsafe_allow_html=True)
+            
+            rev_min = df_revisiones_raw[df_revisiones_raw['MINISTRO'] == current_id]
+            if not rev_min.empty:
+                # Conversión de ID de Iglesia a Nombre para la tabla de revisiones
+                rev_con_nombre = pd.merge(
+                    rev_min,
+                    df_iglesias_cat[['ID', 'NOMBRE']],
+                    left_on='IGLESIA',
+                    right_on='ID',
+                    how='left',
+                    suffixes=('_REV', '_CAT')
+                )
+                
+                rev_con_nombre['IGLESIA_DISPLAY'] = rev_con_nombre['NOMBRE'].fillna(rev_con_nombre['IGLESIA'])
+                
+                # Quitamos ID_REVISION según solicitud
+                display_rev = rev_con_nombre[['IGLESIA_DISPLAY', 'FEC_REVISION', 'PROX_REVISION', 'STATUS']].copy()
+                display_rev.columns = ['IGLESIA', 'FEC_REVISION', 'PROX_REVISION', 'STATUS']
+                
+                st.dataframe(display_rev.sort_values(by='FEC_REVISION', ascending=False), use_container_width=True, hide_index=True)
+            else:
+                st.warning("No se encontraron registros de revisiones para este ministro.")
+
             # --- SECCIÓN: HISTORIAL DE IGLESIAS ---
             st.markdown("<h3 class='section-header'>🏛️ HISTORIAL DE GESTIÓN EN IGLESIAS</h3>", unsafe_allow_html=True)
             
@@ -255,25 +280,19 @@ def main():
                 )
                 
                 actual_cols = rel_con_nombre.columns.tolist()
-                
-                # Identificar la columna de nombre (Pandas suele dejarla como 'NOMBRE' o 'NOMBRE_y' tras el merge)
                 col_nombre_iglesia = 'NOMBRE' if 'NOMBRE' in actual_cols else 'NOMBRE_Y'
                 
                 try:
                     # Seleccionamos solo AÑO, el NOMBRE (iglesia) y OBSERVACION en el orden pedido
                     display_rel_hist = rel_con_nombre[['AÑO', col_nombre_iglesia, 'OBSERVACION']].copy()
-                    
-                    # Renombrar para estética en el Dashboard
                     display_rel_hist.columns = ['AÑO', 'NOMBRE DE IGLESIA', 'OBSERVACION']
                     
-                    # Mostrar tabla ordenada por año
                     st.dataframe(
                         display_rel_hist.sort_values(by='AÑO', ascending=False), 
                         use_container_width=True, 
                         hide_index=True
                     )
                 except KeyError:
-                    # Fallback de seguridad: si falla la selección, mostrar lo que hay pero filtrado
                     st.warning("Estructura de columnas inesperada. Mostrando datos disponibles.")
                     st.dataframe(rel_con_nombre, use_container_width=True, hide_index=True)
             else:
@@ -298,30 +317,6 @@ def main():
                 st.dataframe(display_aca, use_container_width=True, hide_index=True)
             else:
                 st.warning("No se encontraron registros de estudios académicos para este ministro.")
-
-            # --- SECCIÓN: REVISIÓN ---
-            st.markdown("<h3 class='section-header'>📝 HISTORIAL DE REVISIONES</h3>", unsafe_allow_html=True)
-            
-            rev_min = df_revisiones_raw[df_revisiones_raw['MINISTRO'] == current_id]
-            if not rev_min.empty:
-                # Conversión de ID de Iglesia a Nombre para la tabla de revisiones
-                rev_con_nombre = pd.merge(
-                    rev_min,
-                    df_iglesias_cat[['ID', 'NOMBRE']],
-                    left_on='IGLESIA',
-                    right_on='ID',
-                    how='left',
-                    suffixes=('_REV', '_CAT')
-                )
-                
-                rev_con_nombre['IGLESIA_DISPLAY'] = rev_con_nombre['NOMBRE'].fillna(rev_con_nombre['IGLESIA'])
-                
-                display_rev = rev_con_nombre[['ID_REVISION', 'IGLESIA_DISPLAY', 'FEC_REVISION', 'PROX_REVISION', 'STATUS']].copy()
-                display_rev.columns = ['ID_REVISION', 'IGLESIA', 'FEC_REVISION', 'PROX_REVISION', 'STATUS']
-                
-                st.dataframe(display_rev.sort_values(by='FEC_REVISION', ascending=False), use_container_width=True, hide_index=True)
-            else:
-                st.warning("No se encontraron registros de revisiones para este ministro.")
 
         else:
             st.info("Utilice el buscador para localizar un ministro y ver su historial de gestión.")
