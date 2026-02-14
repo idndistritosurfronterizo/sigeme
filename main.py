@@ -99,30 +99,33 @@ def conectar_google_sheets():
             spreadsheet.worksheet("MINISTRO"), 
             spreadsheet.worksheet("IGLESIA"), 
             spreadsheet.worksheet("IGLESIAS"),
-            spreadsheet.worksheet("ESTUDIOS TEOLOGICOS")
+            spreadsheet.worksheet("ESTUDIOS TEOLOGICOS"),
+            spreadsheet.worksheet("ESTUDIOS ACADEMICOS")
         )
     except Exception as e:
         st.error(f"Error de conexión: {e}")
-        return None, None, None, None
+        return None, None, None, None, None
 
 def main():
     if not check_password(): st.stop()
 
     res = conectar_google_sheets()
     if res and all(res):
-        sheet_m, sheet_rel, sheet_ig, sheet_est = res
+        sheet_m, sheet_rel, sheet_ig, sheet_est_teo, sheet_est_aca = res
         
         # Cargar DataFrames
         df_ministros = pd.DataFrame(sheet_m.get_all_records())
         df_relacion = pd.DataFrame(sheet_rel.get_all_records())
         df_iglesias_cat = pd.DataFrame(sheet_ig.get_all_records())
-        df_estudios_raw = pd.DataFrame(sheet_est.get_all_records())
+        df_est_teo_raw = pd.DataFrame(sheet_est_teo.get_all_records())
+        df_est_aca_raw = pd.DataFrame(sheet_est_aca.get_all_records())
 
         # Limpieza estándar de nombres de columnas
         df_ministros.columns = [c.strip().upper() for c in df_ministros.columns]
         df_relacion.columns = [c.strip().upper() for c in df_relacion.columns]
         df_iglesias_cat.columns = [c.strip().upper() for c in df_iglesias_cat.columns]
-        df_estudios_raw.columns = [c.strip().upper() for c in df_estudios_raw.columns]
+        df_est_teo_raw.columns = [c.strip().upper() for c in df_est_teo_raw.columns]
+        df_est_aca_raw.columns = [c.strip().upper() for c in df_est_aca_raw.columns]
 
         try:
             # Normalizar tipos de datos para cruces
@@ -135,7 +138,8 @@ def main():
             df_iglesias_cat['ID'] = df_iglesias_cat['ID'].astype(str).str.strip()
             df_iglesias_cat['NOMBRE'] = df_iglesias_cat['NOMBRE'].astype(str).str.strip()
             
-            df_estudios_raw['MINISTRO'] = df_estudios_raw['MINISTRO'].astype(str).str.strip()
+            df_est_teo_raw['MINISTRO'] = df_est_teo_raw['MINISTRO'].astype(str).str.strip()
+            df_est_aca_raw['MINISTRO'] = df_est_aca_raw['MINISTRO'].astype(str).str.strip()
 
             # 1. Obtener el registro con el MAX(AÑO) por cada ministro
             df_rel_ordenada = df_relacion.sort_values(by=['MINISTRO', 'AÑO'], ascending=[True, False])
@@ -229,25 +233,25 @@ def main():
                         </div>
                         """, unsafe_allow_html=True)
 
-            # --- NUEVA SECCIÓN: ESTUDIOS TEOLÓGICOS ---
+            # --- SECCIÓN: ESTUDIOS TEOLÓGICOS ---
             st.markdown("<h3 class='section-header'>📚 ESTUDIOS TEOLÓGICOS</h3>", unsafe_allow_html=True)
             
-            # Filtrar estudios por el ID del ministro seleccionado
-            estudios_ministro = df_estudios_raw[df_estudios_raw['MINISTRO'] == current_id]
-            
-            if not estudios_ministro.empty:
-                # Mostrar en formato tabla estilizada
-                # Columnas a mostrar: NIVEL, ESCUELA, PERIODO, CERTIFICADO
-                display_estudios = estudios_ministro[['NIVEL', 'ESCUELA', 'PERIODO', 'CERTIFICADO']].copy()
-                
-                # Usamos st.table o st.dataframe para la lista, pero st.dataframe es más interactivo
-                st.dataframe(
-                    display_estudios, 
-                    use_container_width=True, 
-                    hide_index=True
-                )
+            est_teo_min = df_est_teo_raw[df_est_teo_raw['MINISTRO'] == current_id]
+            if not est_teo_min.empty:
+                display_teo = est_teo_min[['NIVEL', 'ESCUELA', 'PERIODO', 'CERTIFICADO']].copy()
+                st.dataframe(display_teo, use_container_width=True, hide_index=True)
             else:
                 st.warning("No se encontraron registros de estudios teológicos para este ministro.")
+
+            # --- SECCIÓN: ESTUDIOS ACADÉMICOS ---
+            st.markdown("<h3 class='section-header'>🎓 ESTUDIOS ACADÉMICOS</h3>", unsafe_allow_html=True)
+            
+            est_aca_min = df_est_aca_raw[df_est_aca_raw['MINISTRO'] == current_id]
+            if not est_aca_min.empty:
+                display_aca = est_aca_min[['NIVEL', 'ESCUELA', 'PERIODO', 'CERTIFICADO']].copy()
+                st.dataframe(display_aca, use_container_width=True, hide_index=True)
+            else:
+                st.warning("No se encontraron registros de estudios académicos para este ministro.")
 
         else:
             st.info("Utilice el buscador para localizar un ministro y ver su historial de gestión.")
