@@ -5,16 +5,11 @@ import pandas as pd
 import os
 import urllib.parse
 import time
+import re
 
 # --- CONFIGURACIÓN DE SEGURIDAD ---
 USUARIO_CORRECTO = "admin"
 PASSWORD_CORRECTO = "ministros2024"
-
-# --- CONFIGURACIÓN APPSHEET ---
-# Es vital que el App ID sea el correcto. A veces el nombre de la app es necesario antes del ID.
-# Formato sugerido: NombreApp-ID
-APPSHEET_APP_ID = "32c8e6c2-fc2a-4dd9-97e7-2d0cdb2af68e" 
-APPSHEET_ACCESS_KEY = "V2-aH1dw-B1NeU-AkHMn-VW2ki-X4fcl-rVxWT-pgY26-NT1xZ" 
 
 # --- CONFIGURACIÓN DE LA PÁGINA ---
 st.set_page_config(
@@ -70,7 +65,7 @@ st.markdown("""
         width: 100%;
         height: auto;
         max-height: 400px;
-        object-fit: contain;
+        object-fit: cover;
     }
     .section-header {
         color: #003366;
@@ -133,34 +128,26 @@ def safe_get_dataframe(worksheet):
     clean_headers = [h.strip().upper() if h.strip() else f"COL_{i}" for i, h in enumerate(headers)]
     return pd.DataFrame(data[1:], columns=clean_headers)
 
-def obtener_url_imagen(ruta_relativa, nombre_tabla):
+def obtener_url_thumbnail_drive(ruta_appsheet):
     """
-    Genera la URL pública para AppSheet usando la API de archivos.
+    Convierte la ruta de AppSheet en una URL de miniatura de Google Drive.
     """
-    if not APPSHEET_APP_ID or not APPSHEET_ACCESS_KEY:
-        return None
-    
-    ruta_limpia = str(ruta_relativa).strip()
-    # Limpiar prefijos de ruta que a veces vienen en el Sheet
-    if ruta_limpia.startswith('/'):
-        ruta_limpia = ruta_limpia[1:]
-        
-    if not ruta_limpia or ruta_limpia.lower() in ["0", "nan", "none", "null", ""]:
+    texto = str(ruta_appsheet).strip()
+    if not texto or texto.lower() in ["0", "nan", "none", "null", ""]:
         return None
 
-    encoded_path = urllib.parse.quote(ruta_limpia)
-    
-    # URL de la API de AppSheet para recuperación de archivos de tabla
-    # Se añade el ID de la app y la tabla correspondiente
-    url = (
-        f"https://www.appsheet.com/template/gettablefileurl"
-        f"?appName={urllib.parse.quote(APPSHEET_APP_ID)}"
-        f"&tableName={urllib.parse.quote(nombre_tabla)}"
-        f"&fileName={encoded_path}"
-        f"&applicationAccessKey={APPSHEET_ACCESS_KEY}"
-        f"&v={int(time.time())}" # Versionado para evitar cache
-    )
-    return url
+    # AppSheet guarda el nombre como: MINISTRO_Images/ID_ARCHIVO.FOTOGRAFIA.184936.jpg
+    # Intentamos extraer el ID del archivo (la primera parte del nombre de archivo)
+    try:
+        # Extraer solo el nombre del archivo sin la carpeta
+        nombre_archivo = texto.split('/')[-1]
+        # El ID suele ser la parte antes del primer punto
+        drive_id = nombre_archivo.split('.')[0]
+        
+        # Generar URL de Thumbnail (miniatura) de alta calidad
+        return f"https://drive.google.com/thumbnail?id={drive_id}&sz=w1000"
+    except:
+        return None
 
 def main():
     if not check_password(): st.stop()
@@ -179,7 +166,6 @@ def main():
             st.error("No se encontraron datos en la tabla MINISTRO.")
             st.stop()
 
-        # Procesamiento de Iglesia Actual
         try:
             df_relacion['AÑO'] = pd.to_numeric(df_relacion['AÑO'], errors='coerce').fillna(0)
             df_rel_actual = df_relacion.sort_values(by=['MINISTRO', 'AÑO'], ascending=[True, False]).drop_duplicates(subset=['MINISTRO'])
@@ -208,17 +194,15 @@ def main():
             
             with c1:
                 st.markdown("### 👤 Fotografía")
-                # Identificar columna de fotografía
                 col_foto = next((c for c in data.index if any(x in c for x in ['FOTO', 'IMAGEN', 'FOTOGRAFIA'])), None)
                 
                 url_foto = None
                 if col_foto:
-                    valor_celda = str(data[col_foto]).strip()
-                    url_foto = obtener_url_imagen(valor_celda, "MINISTRO")
+                    url_foto = obtener_url_thumbnail_drive(data[col_foto])
                 
                 st.markdown("<div class='img-container'>", unsafe_allow_html=True)
                 if url_foto:
-                    # En Streamlit, st.image manejará el renderizado
+                    # Cargamos la imagen con Streamlit directamente
                     st.image(url_foto, use_container_width=True)
                 else:
                     st.markdown("<div style='font-size:6rem; color:#cbd5e1;'>👤</div>", unsafe_allow_html=True)
@@ -244,7 +228,6 @@ def main():
                         display_val = val if val not in ["", "0", "nan", "None"] else "---"
                         st.markdown(f"""<div class="profile-card"><small style='color:#64748b; font-weight:600; text-transform:uppercase;'>{field}</small><br><span style='color:#0f172a; font-weight:500;'>{display_val}</span></div>""", unsafe_allow_html=True)
 
-            # Historiales
             st.markdown("<h3 class='section-header'>📝 REVISIONES</h3>", unsafe_allow_html=True)
             rev_min = df_revisiones_raw[df_revisiones_raw['MINISTRO'] == current_id]
             if not rev_min.empty:
