@@ -97,6 +97,14 @@ st.markdown("""
         box-shadow: 0 1px 3px rgba(0,0,0,0.1);
         border: 1px solid #e2e8f0;
     }
+    
+    .profile-card {
+        background: #ffffff;
+        border: 1px solid #e2e8f0;
+        border-radius: 15px;
+        padding: 20px;
+        margin-top: 10px;
+    }
 
     /* Sidebar */
     [data-testid="stSidebar"] {
@@ -146,6 +154,7 @@ def conectar_google_sheets():
     try:
         creds = Credentials.from_service_account_file("credenciales.json", scopes=scopes)
         client = gspread.authorize(creds)
+        # Cambia el nombre si el archivo en Drive se llama distinto
         return client.open("BD MINISTROS").worksheet("MINISTRO")
     except Exception as e:
         st.error(f"Error de conexión: {e}")
@@ -190,31 +199,34 @@ def main():
             </div>
         """, unsafe_allow_html=True)
 
-        # --- CÁLCULO DE MÉTRICAS (Basado en supuestos de nombres de columnas) ---
-        # Nota: Aquí asumo que existen columnas similares a 'CATEGORIA', 'ROL', 'IGLESIA'
-        # Si los nombres son distintos, el conteo será 0 hasta que se ajusten.
-        
-        # Intentamos detectar columnas de cargos. Si no existen, mostramos total.
+        # --- CÁLCULO DE MÉTRICAS CORREGIDO ---
+        # Se busca "PRESBITERO" (sin tilde y mayúsculas) en todo el dataframe
         total_iglesias = df_view['IGLESIA'].nunique() if 'IGLESIA' in df_view.columns else 0
-        presbiteros = len(df_view[df_view.iloc[:, :].apply(lambda x: x.astype(str).str.contains('Presbítero', case=False)).any(axis=1)])
-        licenciados = len(df_view[df_view.iloc[:, :].apply(lambda x: x.astype(str).str.contains('Licenciado', case=False)).any(axis=1)])
-        laicos = len(df_view[df_view.iloc[:, :].apply(lambda x: x.astype(str).str.contains('Laico', case=False)).any(axis=1)])
+        
+        # Función auxiliar para contar categorías ignorando tildes y mayúsculas
+        def contar_categoria(dataframe, texto):
+            mask = dataframe.apply(lambda x: x.astype(str).str.contains(texto, case=False, na=False)).any(axis=1)
+            return len(dataframe[mask])
+
+        num_presbiteros = contar_categoria(df_view, 'PRESBITERO')
+        num_licenciados = contar_categoria(df_view, 'LICENCIADO')
+        num_laicos = contar_categoria(df_view, 'LAICO')
 
         # --- PANEL DE MÉTRICAS ---
         m1, m2, m3, m4 = st.columns(4)
         with m1:
             st.markdown(f"""<div class='metric-card'><div class='metric-label'>Total de Iglesias</div><div class='metric-value'>{total_iglesias}</div></div>""", unsafe_allow_html=True)
         with m2:
-            st.markdown(f"""<div class='metric-card'><div class='metric-label'>Presbíteros</div><div class='metric-value'>{presbiteros}</div></div>""", unsafe_allow_html=True)
+            st.markdown(f"""<div class='metric-card'><div class='metric-label'>Presbíteros</div><div class='metric-value'>{num_presbiteros}</div></div>""", unsafe_allow_html=True)
         with m3:
-            st.markdown(f"""<div class='metric-card'><div class='metric-label'>M. Licenciados</div><div class='metric-value'>{licenciados}</div></div>""", unsafe_allow_html=True)
+            st.markdown(f"""<div class='metric-card'><div class='metric-label'>M. Licenciados</div><div class='metric-value'>{num_licenciados}</div></div>""", unsafe_allow_html=True)
         with m4:
-            st.markdown(f"""<div class='metric-card'><div class='metric-label'>Ministros Laicos</div><div class='metric-value'>{laicos}</div></div>""", unsafe_allow_html=True)
+            st.markdown(f"""<div class='metric-card'><div class='metric-label'>Ministros Laicos</div><div class='metric-value'>{num_laicos}</div></div>""", unsafe_allow_html=True)
 
         st.markdown("<br>", unsafe_allow_html=True)
 
         # --- TABS DE CONTENIDO ---
-        t1, t2 = st.tabs(["📋 Registros Ministeriales", "📊 Análisis Estadístico"])
+        t1, t2, t3 = st.tabs(["📋 Registros Ministeriales", "📊 Análisis Estadístico", "🔍 Perfil Individual"])
         
         with t1:
             st.markdown('<div class="content-box">', unsafe_allow_html=True)
@@ -241,6 +253,35 @@ def main():
             with col_info:
                 st.markdown("### Resumen")
                 st.info("Utilice los filtros de la izquierda para segmentar los datos por zona, iglesia o categoría específica.")
+            st.markdown('</div>', unsafe_allow_html=True)
+
+        with t3:
+            st.markdown('<div class="content-box">', unsafe_allow_html=True)
+            st.subheader("Buscador de Ministro")
+            
+            # Buscamos la columna de nombres (asumiendo que se llama NOMBRE o similar)
+            col_nombre = next((c for c in df.columns if 'NOMBRE' in c.upper()), df.columns[0])
+            
+            lista_nombres = sorted(df[col_nombre].unique().tolist())
+            nombre_sel = st.selectbox("Seleccione un Ministro para ver detalles:", ["-- Seleccionar --"] + lista_nombres)
+            
+            if nombre_sel != "-- Seleccionar --":
+                ministro_data = df[df[col_nombre] == nombre_sel].iloc[0]
+                
+                st.markdown(f"### Detalle: {nombre_sel}")
+                
+                # Crear una rejilla para mostrar los datos del ministro
+                m_cols = st.columns(3)
+                for i, (col_key, col_val) in enumerate(ministro_data.items()):
+                    with m_cols[i % 3]:
+                        st.markdown(f"""
+                        <div class="profile-card">
+                            <p style='color: #64748b; font-size: 0.8rem; margin:0;'>{col_key}</p>
+                            <p style='color: #003366; font-weight: 600; margin:0;'>{col_val}</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+            else:
+                st.info("Seleccione un nombre del buscador para desplegar su ficha ministerial.")
             st.markdown('</div>', unsafe_allow_html=True)
 
 if __name__ == "__main__":
