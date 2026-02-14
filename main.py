@@ -16,60 +16,92 @@ st.set_page_config(
     layout="wide"
 )
 
-# --- DISEÑO CSS PERSONALIZADO (AZULES Y ELEGANCIA) ---
+# --- DISEÑO CSS PROFESIONAL Y ATRACTIVO ---
 st.markdown("""
     <style>
+    /* Importación de tipografía moderna */
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap');
+    
+    html, body, [class*="css"] {
+        font-family: 'Inter', sans-serif;
+    }
+
     .stApp {
-        background-color: #f0f4f8;
+        background-color: #f8fafc;
     }
     
-    /* Títulos y Subtítulos */
-    .main-title {
-        color: #003366;
-        font-family: 'Helvetica Neue', sans-serif;
-        font-weight: 800;
-        margin-bottom: 0px;
+    /* Encabezado */
+    .header-container {
+        background: linear-gradient(135deg, #003366 0%, #00509d 100%);
+        padding: 3rem;
+        border-radius: 20px;
+        color: white;
         text-align: center;
+        margin-bottom: 2rem;
+        box-shadow: 0 10px 25px rgba(0,51,102,0.15);
+    }
+    .main-title {
+        font-size: 3.5rem;
+        font-weight: 800;
+        margin: 0;
+        letter-spacing: -1px;
     }
     .sub-title {
-        color: #00509d;
         font-size: 1.2rem;
-        text-align: center;
-        margin-top: -10px;
+        opacity: 0.9;
+        margin-top: 0.5rem;
         font-weight: 400;
     }
-    .distrito-text {
-        color: #666;
-        font-size: 1rem;
-        text-align: center;
-        font-style: italic;
-        margin-bottom: 20px;
+    .distrito-tag {
+        display: inline-block;
+        background: rgba(255,255,255,0.2);
+        padding: 5px 15px;
+        border-radius: 50px;
+        font-size: 0.9rem;
+        margin-top: 1rem;
+        text-transform: uppercase;
+        letter-spacing: 1px;
     }
 
-    /* Tarjetas de métricas */
+    /* Tarjetas de métricas interactivas */
     .metric-card {
-        background-color: white;
-        padding: 25px;
-        border-radius: 15px;
-        box-shadow: 0 4px 15px rgba(0,0,0,0.05);
-        border-bottom: 5px solid #003366;
-        text-align: center;
+        background: white;
+        padding: 1.5rem;
+        border-radius: 16px;
+        box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06);
+        transition: transform 0.2s ease;
+        border-left: 6px solid #003366;
+        height: 100%;
     }
-    
-    /* Contenedores de contenido */
-    .content-box {
-        background-color: white;
-        padding: 25px;
-        border-radius: 15px;
-        box-shadow: 0 4px 20px rgba(0,0,0,0.05);
-        margin-bottom: 25px;
+    .metric-card:hover {
+        transform: translateY(-5px);
+    }
+    .metric-label {
+        color: #64748b;
+        font-size: 0.875rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        margin-bottom: 0.5rem;
+    }
+    .metric-value {
+        color: #0f172a;
+        font-size: 2rem;
+        font-weight: 800;
     }
 
-    /* Botones y Sidebar */
-    .stButton>button {
-        background-color: #003366;
-        color: white;
-        border-radius: 8px;
+    /* Contenedores */
+    .content-box {
+        background: white;
+        padding: 2rem;
+        border-radius: 20px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        border: 1px solid #e2e8f0;
+    }
+
+    /* Sidebar */
+    [data-testid="stSidebar"] {
+        background-color: #ffffff;
+        border-right: 1px solid #e2e8f0;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -81,60 +113,57 @@ def check_password():
     if st.session_state["authenticated"]:
         return True
 
-    # Login Visual
     st.markdown("<br><br>", unsafe_allow_html=True)
-    col1, col2, col3 = st.columns([1, 1.5, 1])
+    col1, col2, col3 = st.columns([1, 1.2, 1])
     with col2:
-        # Intentar cargar logo en login
         if os.path.exists("logoNazareno.png"):
-            st.image("logoNazareno.png", width=150)
+            st.image("logoNazareno.png", width=120)
         
         st.markdown("""
-            <div style='background-color: white; padding: 30px; border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.15); border-top: 5px solid #003366;'>
-                <h1 style='text-align: center; color: #003366;'>SIGEME</h1>
-                <p style='text-align: center; color: #666;'>Sistema de Gestión Ministerial y Eclesiástica</p>
+            <div style='background: white; padding: 40px; border-radius: 24px; box-shadow: 0 20px 50px rgba(0,0,0,0.1); text-align: center;'>
+                <h1 style='color: #003366; font-weight: 800; margin-bottom: 10px;'>SIGEME</h1>
+                <p style='color: #64748b;'>Sistema de Gestión Ministerial y Eclesiástica</p>
+                <hr style='opacity: 0.1; margin: 25px 0;'>
             </div>
         """, unsafe_allow_html=True)
         
         with st.form("login_form"):
             user = st.text_input("Usuario")
             password = st.text_input("Contraseña", type="password")
-            if st.form_submit_button("Entrar al Sistema", use_container_width=True):
+            if st.form_submit_button("Acceder al Portal", use_container_width=True):
                 if user == USUARIO_CORRECTO and password == PASSWORD_CORRECTO:
                     st.session_state["authenticated"] = True
                     st.rerun()
                 else:
-                    st.error("Credenciales incorrectas")
+                    st.error("Acceso denegado. Verifique sus credenciales.")
     return False
 
 def conectar_google_sheets():
     scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
     if not os.path.exists("credenciales.json"):
-        st.error("❌ Falta credenciales.json")
+        st.error("❌ Error de sistema: Archivo de credenciales no detectado.")
         return None
     try:
         creds = Credentials.from_service_account_file("credenciales.json", scopes=scopes)
         client = gspread.authorize(creds)
         return client.open("BD MINISTROS").worksheet("MINISTRO")
     except Exception as e:
-        st.error(f"Error: {e}")
+        st.error(f"Error de conexión: {e}")
         return None
 
 def main():
     if not check_password():
         st.stop()
 
-    # --- BARRA LATERAL ---
     with st.sidebar:
         if os.path.exists("logoNazareno.png"):
             st.image("logoNazareno.png", use_container_width=True)
-        st.title("SIGEME")
-        st.info("Gestión Ministerial")
-        if st.button("🚪 Salir"):
+        st.markdown("<h2 style='text-align: center; color: #003366;'>SIGEME</h2>", unsafe_allow_html=True)
+        st.markdown("---")
+        if st.button("🚪 Cerrar Sesión Segura", use_container_width=True):
             st.session_state["authenticated"] = False
             st.rerun()
-        st.markdown("---")
-        st.markdown("### 🛠️ Filtros")
+        st.markdown("### ⚙️ Panel de Filtros")
 
     sheet = conectar_google_sheets()
     
@@ -144,45 +173,74 @@ def main():
 
         # Filtros Sidebar
         cols = df.columns.tolist()
-        sel_col = st.sidebar.selectbox("Filtrar por:", ["Todos"] + cols)
+        sel_col = st.sidebar.selectbox("Agrupar por:", ["Ver Todo"] + cols)
         df_view = df.copy()
-        if sel_col != "Todos":
+        if sel_col != "Ver Todo":
             vals = df[sel_col].unique().tolist()
             picks = st.sidebar.multiselect(f"Seleccionar {sel_col}:", vals)
             if picks:
                 df_view = df[df[sel_col].isin(picks)]
 
-        # --- ENCABEZADO PERSONALIZADO ---
-        st.markdown("<h1 class='main-title'>SIGEME</h1>", unsafe_allow_html=True)
-        st.markdown("<p class='sub-title'>Sistema de Gestión Ministerial y Eclesiástica</p>", unsafe_allow_html=True)
-        st.markdown("<p class='distrito-text'>Distrito Sur Fronterizo</p>", unsafe_allow_html=True)
+        # --- CABECERA VISUAL ---
+        st.markdown("""
+            <div class='header-container'>
+                <h1 class='main-title'>SIGEME</h1>
+                <p class='sub-title'>Sistema de Gestión Ministerial y Eclesiástica</p>
+                <span class='distrito-tag'>Distrito Sur Fronterizo</span>
+            </div>
+        """, unsafe_allow_html=True)
 
-        # --- MÉTRICAS ---
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            st.markdown(f'<div class="metric-card"><p style="color:#666">Ministros</p><h2>{len(df_view)}</h2></div>', unsafe_allow_html=True)
-        with c2:
-            st.markdown(f'<div class="metric-card"><p style="color:#666">Base de Datos</p><h2 style="color:#28a745">Activa</h2></div>', unsafe_allow_html=True)
-        with c3:
-            st.markdown(f'<div class="metric-card"><p style="color:#666">Distrito</p><h2 style="font-size:1.2rem; color:#003366">SUR FRONTERIZO</h2></div>', unsafe_allow_html=True)
+        # --- CÁLCULO DE MÉTRICAS (Basado en supuestos de nombres de columnas) ---
+        # Nota: Aquí asumo que existen columnas similares a 'CATEGORIA', 'ROL', 'IGLESIA'
+        # Si los nombres son distintos, el conteo será 0 hasta que se ajusten.
+        
+        # Intentamos detectar columnas de cargos. Si no existen, mostramos total.
+        total_iglesias = df_view['IGLESIA'].nunique() if 'IGLESIA' in df_view.columns else 0
+        presbiteros = len(df_view[df_view.iloc[:, :].apply(lambda x: x.astype(str).str.contains('Presbítero', case=False)).any(axis=1)])
+        licenciados = len(df_view[df_view.iloc[:, :].apply(lambda x: x.astype(str).str.contains('Licenciado', case=False)).any(axis=1)])
+        laicos = len(df_view[df_view.iloc[:, :].apply(lambda x: x.astype(str).str.contains('Laico', case=False)).any(axis=1)])
+
+        # --- PANEL DE MÉTRICAS ---
+        m1, m2, m3, m4 = st.columns(4)
+        with m1:
+            st.markdown(f"""<div class='metric-card'><div class='metric-label'>Total de Iglesias</div><div class='metric-value'>{total_iglesias}</div></div>""", unsafe_allow_html=True)
+        with m2:
+            st.markdown(f"""<div class='metric-card'><div class='metric-label'>Presbíteros</div><div class='metric-value'>{presbiteros}</div></div>""", unsafe_allow_html=True)
+        with m3:
+            st.markdown(f"""<div class='metric-card'><div class='metric-label'>M. Licenciados</div><div class='metric-value'>{licenciados}</div></div>""", unsafe_allow_html=True)
+        with m4:
+            st.markdown(f"""<div class='metric-card'><div class='metric-label'>Ministros Laicos</div><div class='metric-value'>{laicos}</div></div>""", unsafe_allow_html=True)
 
         st.markdown("<br>", unsafe_allow_html=True)
 
-        # --- PANELES ---
-        t1, t2 = st.tabs(["📋 Base de Datos", "📊 Gráficos de Análisis"])
+        # --- TABS DE CONTENIDO ---
+        t1, t2 = st.tabs(["📋 Registros Ministeriales", "📊 Análisis Estadístico"])
         
         with t1:
             st.markdown('<div class="content-box">', unsafe_allow_html=True)
-            st.dataframe(df_view, use_container_width=True, height=400)
+            st.dataframe(df_view, use_container_width=True, height=450)
+            st.markdown("<br>", unsafe_allow_html=True)
             csv = df_view.to_csv(index=False).encode('utf-8')
-            st.download_button("📥 Descargar Reporte CSV", csv, "sigeme_reporte.csv", "text/csv")
+            st.download_button("📥 Exportar Reporte a Excel/CSV", csv, "reporte_sigeme.csv", "text/csv", use_container_width=True)
             st.markdown('</div>', unsafe_allow_html=True)
 
         with t2:
             st.markdown('<div class="content-box">', unsafe_allow_html=True)
-            col_x = st.selectbox("Selecciona columna para analizar:", cols)
-            fig = px.histogram(df_view, x=col_x, color_discrete_sequence=['#003366'], template="plotly_white")
-            st.plotly_chart(fig, use_container_width=True)
+            col_chart, col_info = st.columns([2, 1])
+            with col_chart:
+                col_x = st.selectbox("Visualizar distribución por:", cols)
+                fig = px.histogram(
+                    df_view, 
+                    x=col_x, 
+                    color_discrete_sequence=['#003366'], 
+                    template="plotly_white",
+                    title=f"Concentración de datos por {col_x}"
+                )
+                fig.update_layout(bargap=0.2, margin=dict(t=50, b=20, l=20, r=20))
+                st.plotly_chart(fig, use_container_width=True)
+            with col_info:
+                st.markdown("### Resumen")
+                st.info("Utilice los filtros de la izquierda para segmentar los datos por zona, iglesia o categoría específica.")
             st.markdown('</div>', unsafe_allow_html=True)
 
 if __name__ == "__main__":
