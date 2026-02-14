@@ -136,6 +136,8 @@ def safe_get_dataframe(worksheet):
 def descargar_imagen_bytes(drive_service, ruta_appsheet):
     """
     Descarga la imagen directamente desde Drive usando la API y retorna los bytes.
+    IMPORTANTE: La carpeta 'MINISTRO_Images' debe estar compartida con el email
+    de la cuenta de servicio como EDITOR.
     """
     texto = str(ruta_appsheet).strip()
     if not texto or texto.lower() in ["0", "nan", "none", "null", ""]:
