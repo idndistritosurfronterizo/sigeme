@@ -151,17 +151,21 @@ def conectar_google_sheets():
     scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
     if not os.path.exists("credenciales.json"):
         st.error("❌ Error de sistema: Archivo de credenciales no detectado.")
-        return None, None
+        return None, None, None
     try:
         creds = Credentials.from_service_account_file("credenciales.json", scopes=scopes)
         client = gspread.authorize(creds)
         spreadsheet = client.open("BD MINISTROS")
-        sheet_ministro = spreadsheet.worksheet("MINISTRO")
-        sheet_iglesias = spreadsheet.worksheet("IGLESIAS")
-        return sheet_ministro, sheet_iglesias
+        
+        # Obtenemos las 3 pestañas necesarias
+        sheet_m = spreadsheet.worksheet("MINISTRO")
+        sheet_rel = spreadsheet.worksheet("IGLESIA")  # Tabla relacional
+        sheet_ig = spreadsheet.worksheet("IGLESIAS") # Catálogo de nombres
+        
+        return sheet_m, sheet_rel, sheet_ig
     except Exception as e:
         st.error(f"Error de conexión: {e}")
-        return None, None
+        return None, None, None
 
 def main():
     if not check_password():
@@ -177,37 +181,49 @@ def main():
             st.rerun()
         st.markdown("### ⚙️ Panel de Filtros")
 
-    sheet_m, sheet_i = conectar_google_sheets()
+    sheet_m, sheet_rel, sheet_ig = conectar_google_sheets()
     
-    if sheet_m and sheet_i:
+    if sheet_m and sheet_rel and sheet_ig:
         df_ministros = pd.DataFrame(sheet_m.get_all_records())
-        df_iglesias = pd.DataFrame(sheet_i.get_all_records())
+        df_relacional = pd.DataFrame(sheet_rel.get_all_records())
+        df_catalogo_iglesias = pd.DataFrame(sheet_ig.get_all_records())
 
-        # --- LÓGICA DE RELACIÓN (Merge) ---
-        # Asumimos que en MINISTRO la columna se llama 'IGLESIA' (que tiene el ID)
-        # y en IGLESIAS la columna se llama 'ID_IGLESIA' y el nombre real es 'NOMBRE_IGLESIA'
-        # Ajustamos los nombres de columnas para el cruce si es necesario.
-        col_id_iglesia_en_m = 'IGLESIA'
-        col_id_iglesia_en_i = 'ID_IGLESIA'
-        col_nombre_real_iglesia = 'NOMBRE_IGLESIA' # Cambiar si el nombre en la pestaña IGLESIAS es distinto
-
-        if col_id_iglesia_en_m in df_ministros.columns and col_id_iglesia_en_i in df_iglesias.columns:
-            # Creamos una copia para no perder el ID original si se necesitara, pero priorizamos el nombre
-            df = pd.merge(
-                df_ministros, 
-                df_iglesias[[col_id_iglesia_en_i, col_nombre_real_iglesia]], 
-                left_on=col_id_iglesia_en_m, 
-                right_on=col_id_iglesia_en_i, 
-                how='left'
-            )
-            # Reemplazamos el valor de la columna IGLESIA por el nombre real encontrado
-            df['IGLESIA_NOMBRE_M'] = df[col_nombre_real_iglesia].fillna(df[col_id_iglesia_en_m])
+        # --- LÓGICA DE VINCULACIÓN AVANZADA ---
+        # 1. Limpiar datos de año para asegurar ordenamiento correcto
+        if 'AÑO' in df_relacional.columns:
+            df_relacional['AÑO'] = pd.to_numeric(df_relacional['AÑO'], errors='coerce').fillna(0)
+            # Ordenar por Ministro y Año descendente para tener el más actual arriba
+            df_rel_sorted = df_relacional.sort_values(by=['ID_ministro', 'AÑO'], ascending=[True, False])
+            # Quedarnos solo con el registro más actual por ministro
+            df_actual_iglesia = df_rel_sorted.drop_duplicates(subset=['ID_ministro'])
         else:
-            df = df_ministros.copy()
-            df['IGLESIA_NOMBRE_M'] = df['IGLESIA'] if 'IGLESIA' in df.columns else "N/A"
+            df_actual_iglesia = df_relacional.copy()
+
+        # 2. Unir la relación actual con el catálogo de nombres de iglesias
+        # Pestaña "IGLESIA" tiene ID_ministro e IGLESIA ID
+        # Pestaña "IGLESIAS" tiene ID_IGLESIA y NOMBRE_IGLESIA
+        df_iglesia_info = pd.merge(
+            df_actual_iglesia,
+            df_catalogo_iglesias[['ID_IGLESIA', 'NOMBRE_IGLESIA']],
+            left_on='IGLESIA ID',
+            right_on='ID_IGLESIA',
+            how='left'
+        )
+
+        # 3. Unir finalmente con la tabla de Ministros
+        df = pd.merge(
+            df_ministros,
+            df_iglesia_info[['ID_ministro', 'NOMBRE_IGLESIA', 'AÑO']],
+            on='ID_ministro',
+            how='left'
+        )
+        
+        # Renombrar para consistencia en la UI
+        df['IGLESIA_ACTUAL'] = df['NOMBRE_IGLESIA'].fillna("Sin Iglesia Asignada")
+        df['AÑO_GESTION'] = df['AÑO'].fillna("N/A")
 
         # Filtros Sidebar
-        cols_sidebar = df.columns.tolist()
+        cols_sidebar = [c for c in df.columns if c not in ['ID_ministro', 'NOMBRE_IGLESIA']]
         sel_col = st.sidebar.selectbox("Agrupar por:", ["Ver Todo"] + cols_sidebar)
         df_view = df.copy()
         if sel_col != "Ver Todo":
@@ -226,7 +242,7 @@ def main():
         """, unsafe_allow_html=True)
 
         # --- CÁLCULO DE MÉTRICAS ---
-        total_iglesias = df_view['IGLESIA_NOMBRE_M'].nunique()
+        total_iglesias = df_view['IGLESIA_ACTUAL'].nunique()
         
         def contar_categoria(dataframe, texto):
             mask = dataframe.apply(lambda x: x.astype(str).str.contains(texto, case=False, na=False)).any(axis=1)
@@ -283,29 +299,26 @@ def main():
                 st.markdown(f"## {nombre_sel}")
                 
                 # Campos a excluir o limpiar de la vista
-                # Quitamos las columnas técnicas del merge y los IDs solicitados anteriormente
                 excluir = [
-                    'ID_MINISTRO', 'ESTUDIOS TEOLOGICOS', 'ESTUDIOS ACADEMICOS', 
-                    col_foto_key, col_nombre, col_id_iglesia_en_i, col_nombre_real_iglesia,
-                    col_id_iglesia_en_m # Quitamos el ID de la iglesia para mostrar solo el nombre relacionado
+                    'ID_ministro', 'ESTUDIOS TEOLOGICOS', 'ESTUDIOS ACADEMICOS', 
+                    col_foto_key, col_nombre, 'NOMBRE_IGLESIA', 'IGLESIA', 'AÑO'
                 ]
                 
                 # Rejilla de información
                 m_cols = st.columns(2)
-                idx_display = 0
                 
-                # Mostramos primero la Iglesia vinculada de forma destacada
+                # Mostrar la Iglesia Actual (del cruce con la tabla relacional "IGLESIA")
                 with m_cols[0]:
                     st.markdown(f"""
                     <div class="profile-card" style="border-left: 6px solid #fbbf24;">
-                        <p style='color: #64748b; font-size: 0.8rem; margin:0; text-transform: uppercase;'>IGLESIA</p>
-                        <p style='color: #003366; font-weight: 800; margin:0; font-size: 1.2rem;'>{ministro_data['IGLESIA_NOMBRE_M']}</p>
+                        <p style='color: #64748b; font-size: 0.8rem; margin:0; text-transform: uppercase;'>IGLESIA ACTUAL ({ministro_data['AÑO_GESTION']})</p>
+                        <p style='color: #003366; font-weight: 800; margin:0; font-size: 1.2rem;'>{ministro_data['IGLESIA_ACTUAL']}</p>
                     </div>
                     """, unsafe_allow_html=True)
+                
                 idx_display = 1
-
                 for col_key, col_val in ministro_data.items():
-                    if col_key.upper() not in [e.upper() for e in excluir] and col_key != 'IGLESIA_NOMBRE_M':
+                    if col_key not in excluir and col_key not in ['IGLESIA_ACTUAL', 'AÑO_GESTION']:
                         with m_cols[idx_display % 2]:
                             st.markdown(f"""
                             <div class="profile-card">
