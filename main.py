@@ -256,6 +256,26 @@ def main():
                         display_val = val if val not in ["", "0", "nan", "None"] else "---"
                         st.markdown(f"""<div class="profile-card"><small style='color:#64748b; font-weight:600; text-transform:uppercase;'>{field}</small><br><span style='color:#0f172a; font-weight:500;'>{display_val}</span></div>""", unsafe_allow_html=True)
 
+            # --- NUEVAS SECCIONES DE ESTUDIOS ---
+            st.markdown("<h3 class='section-header'>🎓 FORMACIÓN ACADÉMICA Y TEOLÓGICA</h3>", unsafe_allow_html=True)
+            est_col1, est_col2 = st.columns(2)
+            
+            with est_col1:
+                st.markdown("**Estudios Teológicos**")
+                df_teo = df_est_teo_raw[df_est_teo_raw['ID_MINISTRO'] == current_id]
+                if not df_teo.empty:
+                    st.dataframe(df_teo[['NIVEL', 'INSTITUCION', 'ESTADO']], use_container_width=True, hide_index=True)
+                else:
+                    st.info("Sin registros teológicos.")
+
+            with est_col2:
+                st.markdown("**Estudios Académicos**")
+                df_aca = df_est_aca_raw[df_est_aca_raw['ID_MINISTRO'] == current_id]
+                if not df_aca.empty:
+                    st.dataframe(df_aca[['NIVEL', 'TITULO', 'ESTADO']], use_container_width=True, hide_index=True)
+                else:
+                    st.info("Sin registros académicos.")
+
             st.markdown("<h3 class='section-header'>📝 REVISIONES</h3>", unsafe_allow_html=True)
             rev_min = df_revisiones_raw[df_revisiones_raw['MINISTRO'] == current_id]
             if not rev_min.empty:
