@@ -1,6 +1,7 @@
 import streamlit as st
 import gspread
 from google.oauth2.service_account import Credentials
+from googleapiclient.discovery import build
 import pandas as pd
 import os
 import urllib.parse
@@ -100,16 +101,17 @@ def check_password():
         st.markdown("</div>", unsafe_allow_html=True)
     return False
 
-def conectar_google_sheets():
+def obtener_servicios():
     scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
     if not os.path.exists("credenciales.json"):
         st.error("Archivo credenciales.json no encontrado")
-        return None
+        return None, None
     try:
         creds = Credentials.from_service_account_file("credenciales.json", scopes=scopes)
         client = gspread.authorize(creds)
+        drive_service = build('drive', 'v3', credentials=creds)
         spreadsheet = client.open("BD MINISTROS")
-        return (
+        worksheets = (
             spreadsheet.worksheet("MINISTRO"), 
             spreadsheet.worksheet("IGLESIA"), 
             spreadsheet.worksheet("IGLESIAS"),
@@ -117,9 +119,10 @@ def conectar_google_sheets():
             spreadsheet.worksheet("ESTUDIOS ACADEMICOS"),
             spreadsheet.worksheet("Revision")
         )
+        return worksheets, drive_service
     except Exception as e:
         st.error(f"Error de conexión: {e}")
-        return None
+        return None, None
 
 def safe_get_dataframe(worksheet):
     data = worksheet.get_all_values()
@@ -128,33 +131,42 @@ def safe_get_dataframe(worksheet):
     clean_headers = [h.strip().upper() if h.strip() else f"COL_{i}" for i, h in enumerate(headers)]
     return pd.DataFrame(data[1:], columns=clean_headers)
 
-def obtener_url_thumbnail_drive(ruta_appsheet):
+def buscar_imagen_drive(drive_service, ruta_appsheet):
     """
-    Convierte la ruta de AppSheet en una URL de miniatura de Google Drive.
+    Busca el ID del archivo en Drive usando el nombre que AppSheet guardó.
     """
     texto = str(ruta_appsheet).strip()
     if not texto or texto.lower() in ["0", "nan", "none", "null", ""]:
         return None
 
-    # AppSheet guarda el nombre como: MINISTRO_Images/ID_ARCHIVO.FOTOGRAFIA.184936.jpg
-    # Intentamos extraer el ID del archivo (la primera parte del nombre de archivo)
     try:
-        # Extraer solo el nombre del archivo sin la carpeta
+        # El nombre del archivo suele ser la última parte de la ruta
         nombre_archivo = texto.split('/')[-1]
-        # El ID suele ser la parte antes del primer punto
-        drive_id = nombre_archivo.split('.')[0]
         
-        # Generar URL de Thumbnail (miniatura) de alta calidad
-        return f"https://drive.google.com/thumbnail?id={drive_id}&sz=w1000"
-    except:
+        # Consultar a Google Drive por archivos con ese nombre exacto
+        query = f"name = '{nombre_archivo}' and trashed = false"
+        results = drive_service.files().list(q=query, fields="files(id, name)").execute()
+        items = results.get('files', [])
+
+        if not items:
+            # Intento secundario: buscar solo por la primera parte del ID si tiene puntos
+            nombre_corto = nombre_archivo.split('.')[0]
+            query_fallback = f"name contains '{nombre_corto}' and trashed = false"
+            results = drive_service.files().list(q=query_fallback, fields="files(id, name)").execute()
+            items = results.get('files', [])
+
+        if items:
+            drive_id = items[0]['id']
+            return f"https://drive.google.com/thumbnail?id={drive_id}&sz=w1000"
+    except Exception as e:
         return None
+    return None
 
 def main():
     if not check_password(): st.stop()
 
-    res = conectar_google_sheets()
-    if res and all(res):
-        sheets = list(res)
+    sheets, drive_service = obtener_servicios()
+    if sheets and all(sheets):
         df_ministros = safe_get_dataframe(sheets[0])
         df_relacion = safe_get_dataframe(sheets[1])
         df_iglesias_cat = safe_get_dataframe(sheets[2])
@@ -197,16 +209,15 @@ def main():
                 col_foto = next((c for c in data.index if any(x in c for x in ['FOTO', 'IMAGEN', 'FOTOGRAFIA'])), None)
                 
                 url_foto = None
-                if col_foto:
-                    url_foto = obtener_url_thumbnail_drive(data[col_foto])
+                if col_foto and drive_service:
+                    url_foto = buscar_imagen_drive(drive_service, data[col_foto])
                 
                 st.markdown("<div class='img-container'>", unsafe_allow_html=True)
                 if url_foto:
-                    # Cargamos la imagen con Streamlit directamente
                     st.image(url_foto, use_container_width=True)
                 else:
                     st.markdown("<div style='font-size:6rem; color:#cbd5e1;'>👤</div>", unsafe_allow_html=True)
-                    st.caption("Imagen no disponible")
+                    st.caption("Imagen no encontrada en Drive")
                 st.markdown("</div>", unsafe_allow_html=True)
             
             with c2:
