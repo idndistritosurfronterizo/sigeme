@@ -223,94 +223,67 @@ def main():
 
         st.markdown("<br>", unsafe_allow_html=True)
 
-        # --- TABS DE CONTENIDO ---
-        t1, t2, t3 = st.tabs(["📋 Registros Ministeriales", "📊 Análisis Estadístico", "🔍 Perfil Individual"])
+        # --- BUSCADOR PRINCIPAL ---
+        st.markdown('<div class="content-box">', unsafe_allow_html=True)
+        st.subheader("🔍 Buscador de Ministro")
         
-        with t1:
-            st.markdown('<div class="content-box">', unsafe_allow_html=True)
-            st.dataframe(df_view, use_container_width=True, height=450)
-            st.markdown("<br>", unsafe_allow_html=True)
-            csv = df_view.to_csv(index=False).encode('utf-8')
-            st.download_button("📥 Exportar Reporte a Excel/CSV", csv, "reporte_sigeme.csv", "text/csv", use_container_width=True)
-            st.markdown('</div>', unsafe_allow_html=True)
-
-        with t2:
-            st.markdown('<div class="content-box">', unsafe_allow_html=True)
-            col_chart, col_info = st.columns([2, 1])
-            with col_chart:
-                col_x = st.selectbox("Visualizar distribución por:", cols)
-                fig = px.histogram(
-                    df_view, 
-                    x=col_x, 
-                    color_discrete_sequence=['#003366'], 
-                    template="plotly_white",
-                    title=f"Concentración de datos por {col_x}"
-                )
-                fig.update_layout(bargap=0.2, margin=dict(t=50, b=20, l=20, r=20))
-                st.plotly_chart(fig, use_container_width=True)
-            with col_info:
-                st.markdown("### Resumen")
-                st.info("Utilice los filtros de la izquierda para segmentar los datos por zona, iglesia o categoría específica.")
-            st.markdown('</div>', unsafe_allow_html=True)
-
-        with t3:
-            st.markdown('<div class="content-box">', unsafe_allow_html=True)
-            st.subheader("Buscador de Ministro")
+        col_nombre = next((c for c in df.columns if 'NOMBRE' in c.upper()), df.columns[0])
+        lista_nombres = sorted(df[col_nombre].unique().tolist())
+        nombre_sel = st.selectbox("Escriba o seleccione un Ministro para ver su ficha:", ["-- Seleccionar --"] + lista_nombres)
+        
+        if nombre_sel != "-- Seleccionar --":
+            ministro_data = df[df[col_nombre] == nombre_sel].iloc[0]
             
-            col_nombre = next((c for c in df.columns if 'NOMBRE' in c.upper()), df.columns[0])
-            lista_nombres = sorted(df[col_nombre].unique().tolist())
-            nombre_sel = st.selectbox("Seleccione un Ministro para ver detalles:", ["-- Seleccionar --"] + lista_nombres)
+            # --- GESTIÓN DE FOTOGRAFÍA ---
+            col_img_text, col_profile = st.columns([1, 3])
             
-            if nombre_sel != "-- Seleccionar --":
-                ministro_data = df[df[col_nombre] == nombre_sel].iloc[0]
-                
-                # --- GESTIÓN DE FOTOGRAFÍA ---
-                col_img_text, col_profile = st.columns([1, 3])
-                
-                with col_img_text:
-                    # Buscamos la columna de fotografía
-                    col_foto_key = next((c for c in df.columns if 'FOTOGRAFIA' in c.upper() or 'FOTO' in c.upper()), None)
-                    if col_foto_key and ministro_data[col_foto_key]:
-                        ruta_foto = str(ministro_data[col_foto_key])
-                        # Si es una ruta de AppSheet, intentamos mostrarla. 
-                        # Nota: Esto requiere que la carpeta de imágenes esté accesible o sea una URL.
-                        # Aquí intentamos cargarla como imagen local si existe o mostrar el placeholder.
-                        if os.path.exists(ruta_foto):
-                            st.image(ruta_foto, use_container_width=True, caption=nombre_sel)
-                        else:
-                            # Si es texto de ruta relativa, mostramos un icono de usuario profesional
-                            st.markdown(f"""
-                                <div style='background: #e2e8f0; border-radius: 15px; height: 200px; display: flex; align-items: center; justify-content: center;'>
-                                    <span style='font-size: 5rem;'>👤</span>
-                                </div>
-                                <p style='text-align:center; font-size:0.8rem; color:#64748b;'>Ruta: {ruta_foto}</p>
-                            """, unsafe_allow_html=True)
+            with col_img_text:
+                # Buscamos la columna de fotografía
+                col_foto_key = next((c for c in df.columns if 'FOTOGRAFIA' in c.upper() or 'FOTO' in c.upper()), None)
+                if col_foto_key and ministro_data[col_foto_key]:
+                    ruta_foto = str(ministro_data[col_foto_key])
+                    
+                    # Intentar cargar imagen
+                    if os.path.exists(ruta_foto):
+                        st.image(ruta_foto, use_container_width=True, caption=nombre_sel)
                     else:
-                        st.markdown("<div style='background:#f1f5f9; height:200px; border-radius:15px; display:flex; align-items:center; justify-content:center;'>👤 Sin Foto</div>", unsafe_allow_html=True)
+                        st.markdown(f"""
+                            <div style='background: #e2e8f0; border-radius: 15px; height: 200px; display: flex; align-items: center; justify-content: center;'>
+                                <span style='font-size: 5rem;'>👤</span>
+                            </div>
+                            <p style='text-align:center; font-size:0.8rem; color:#64748b; margin-top:5px;'>Perfil: {nombre_sel}</p>
+                        """, unsafe_allow_html=True)
+                else:
+                    st.markdown("<div style='background:#f1f5f9; height:200px; border-radius:15px; display:flex; align-items:center; justify-content:center;'>👤 Sin Foto</div>", unsafe_allow_html=True)
 
-                with col_profile:
-                    st.markdown(f"## {nombre_sel}")
-                    
-                    # Campos a excluir de la vista de tarjetas
-                    excluir = ['ID_MINISTRO', 'ESTUDIOS TEOLOGICOS', 'ESTUDIOS ACADEMICOS', col_foto_key, col_nombre]
-                    
-                    # Crear una rejilla para mostrar los datos restantes del ministro
-                    m_cols = st.columns(2)
-                    idx_display = 0
-                    for col_key, col_val in ministro_data.items():
-                        # Normalizamos el nombre de la columna para comparar
-                        if col_key.upper() not in [e.upper() for e in excluir]:
-                            with m_cols[idx_display % 2]:
-                                st.markdown(f"""
-                                <div class="profile-card">
-                                    <p style='color: #64748b; font-size: 0.8rem; margin:0; text-transform: uppercase; letter-spacing: 0.5px;'>{col_key}</p>
-                                    <p style='color: #003366; font-weight: 600; margin:0; font-size: 1.1rem;'>{col_val if col_val != "" else "---"}</p>
-                                </div>
-                                """, unsafe_allow_html=True)
-                            idx_display += 1
-            else:
-                st.info("Seleccione un nombre del buscador para desplegar su ficha ministerial.")
-            st.markdown('</div>', unsafe_allow_html=True)
+            with col_profile:
+                st.markdown(f"## {nombre_sel}")
+                
+                # Campos a excluir
+                excluir = ['ID_MINISTRO', 'ESTUDIOS TEOLOGICOS', 'ESTUDIOS ACADEMICOS', col_foto_key, col_nombre]
+                
+                # Rejilla de información
+                m_cols = st.columns(2)
+                idx_display = 0
+                for col_key, col_val in ministro_data.items():
+                    if col_key.upper() not in [e.upper() for e in excluir]:
+                        with m_cols[idx_display % 2]:
+                            st.markdown(f"""
+                            <div class="profile-card">
+                                <p style='color: #64748b; font-size: 0.8rem; margin:0; text-transform: uppercase; letter-spacing: 0.5px;'>{col_key}</p>
+                                <p style='color: #003366; font-weight: 600; margin:0; font-size: 1.1rem;'>{col_val if col_val != "" else "---"}</p>
+                            </div>
+                            """, unsafe_allow_html=True)
+                        idx_display += 1
+            
+            st.markdown("<br>", unsafe_allow_html=True)
+            # Botón para exportar solo este ministro si se desea
+            csv_single = pd.DataFrame([ministro_data]).to_csv(index=False).encode('utf-8')
+            st.download_button(f"📥 Descargar Ficha de {nombre_sel}", csv_single, f"ficha_{nombre_sel}.csv", "text/csv")
+
+        else:
+            st.info("Utilice el buscador superior para localizar a un ministro y desplegar su información completa.")
+        st.markdown('</div>', unsafe_allow_html=True)
 
 if __name__ == "__main__":
     main()
