@@ -254,29 +254,27 @@ def main():
                     how='left'
                 )
                 
-                # SELECCIÓN CORREGIDA: Usar mayúsculas para coincidir con la normalización superior
-                # Si en el Sheets es 'OBSERVACION', tras df_relacion.columns = [...upper()] es 'OBSERVACION'
-                cols_historial = ['ID_REL', 'NOMBRE_CAT', 'AÑO', 'OBSERVACION']
-                
-                # Verificamos qué columnas existen realmente para evitar nuevos KeyErrors
                 actual_cols = rel_con_nombre.columns.tolist()
                 
-                # Intentamos mapear las columnas correctas dinámicamente si los nombres variaron por el merge
-                # Tras el merge, 'ID' de la relación suele ser 'ID' y 'NOMBRE' del catálogo suele ser 'NOMBRE'
-                # Pero si hay colisiones, Pandas añade sufijos.
-                
-                display_rel_hist = rel_con_nombre.copy()
-                
-                # Identificar columnas por contenido si es necesario o por nombre exacto post-merge
-                col_id = 'ID_X' if 'ID_X' in actual_cols else 'ID'
-                col_nombre = 'NOMBRE' if 'NOMBRE' in actual_cols else 'NOMBRE_Y'
+                # Identificar la columna de nombre (Pandas suele dejarla como 'NOMBRE' o 'NOMBRE_y' tras el merge)
+                col_nombre_iglesia = 'NOMBRE' if 'NOMBRE' in actual_cols else 'NOMBRE_Y'
                 
                 try:
-                    display_rel_hist = rel_con_nombre[[col_id, col_nombre, 'AÑO', 'OBSERVACION']].copy()
-                    display_rel_hist.columns = ['ID', 'IGLESIA', 'AÑO', 'OBSERVACION']
-                    st.dataframe(display_rel_hist.sort_values(by='AÑO', ascending=False), use_container_width=True, hide_index=True)
+                    # Seleccionamos solo AÑO, el NOMBRE (iglesia) y OBSERVACION en el orden pedido
+                    display_rel_hist = rel_con_nombre[['AÑO', col_nombre_iglesia, 'OBSERVACION']].copy()
+                    
+                    # Renombrar para estética en el Dashboard
+                    display_rel_hist.columns = ['AÑO', 'NOMBRE DE IGLESIA', 'OBSERVACION']
+                    
+                    # Mostrar tabla ordenada por año
+                    st.dataframe(
+                        display_rel_hist.sort_values(by='AÑO', ascending=False), 
+                        use_container_width=True, 
+                        hide_index=True
+                    )
                 except KeyError:
-                    # Fallback si las columnas no se llaman como esperamos tras el merge
+                    # Fallback de seguridad: si falla la selección, mostrar lo que hay pero filtrado
+                    st.warning("Estructura de columnas inesperada. Mostrando datos disponibles.")
                     st.dataframe(rel_con_nombre, use_container_width=True, hide_index=True)
             else:
                 st.warning("No se encontraron registros históricos de iglesias para este ministro.")
