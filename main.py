@@ -252,15 +252,21 @@ def main():
                 st.dataframe(df_hist_show[['AÑO', 'NOMBRE', 'OBSERVACION']].sort_values('AÑO', ascending=False), use_container_width=True, hide_index=True)
             else: st.info("No hay historial de gestión.")
 
-            c_t1, c_t2 = st.columns(2)
-            with c_t1:
-                st.markdown("<h3 class='section-header'>📚 ESTUDIOS TEOLÓGICOS</h3>", unsafe_allow_html=True)
-                t = df_est_teo_raw[df_est_teo_raw['MINISTRO'].astype(str).str.strip() == current_id]
-                st.dataframe(t[['NIVEL', 'ESCUELA', 'PERIODO', 'CERTIFICADO']] if not t.empty else pd.DataFrame(), use_container_width=True, hide_index=True)
-            with c_t2:
-                st.markdown("<h3 class='section-header'>🎓 ESTUDIOS ACADÉMICOS</h3>", unsafe_allow_html=True)
-                a = df_est_aca_raw[df_est_aca_raw['MINISTRO'].astype(str).str.strip() == current_id]
-                st.dataframe(a[['NIVEL', 'ESCUELA', 'PERIODO', 'CERTIFICADO']] if not a.empty else pd.DataFrame(), use_container_width=True, hide_index=True)
+            # --- SECCIÓN DE ESTUDIOS (REORDENADA: UNO DEBAJO DEL OTRO) ---
+            st.markdown("<h3 class='section-header'>📚 ESTUDIOS TEOLÓGICOS</h3>", unsafe_allow_html=True)
+            t = df_est_teo_raw[df_est_teo_raw['MINISTRO'].astype(str).str.strip() == current_id]
+            if not t.empty:
+                st.dataframe(t[['NIVEL', 'ESCUELA', 'PERIODO', 'CERTIFICADO']], use_container_width=True, hide_index=True)
+            else:
+                st.info("No se registran estudios teológicos.")
+
+            st.markdown("<h3 class='section-header'>🎓 ESTUDIOS ACADÉMICOS</h3>", unsafe_allow_html=True)
+            a = df_est_aca_raw[df_est_aca_raw['MINISTRO'].astype(str).str.strip() == current_id]
+            if not a.empty:
+                st.dataframe(a[['NIVEL', 'ESCUELA', 'PERIODO', 'CERTIFICADO']], use_container_width=True, hide_index=True)
+            else:
+                st.info("No se registran estudios académicos.")
+
         else:
             st.info("Seleccione un ministro para ver su información.")
         st.markdown("</div>", unsafe_allow_html=True)
