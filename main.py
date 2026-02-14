@@ -10,7 +10,6 @@ USUARIO_CORRECTO = "admin"
 PASSWORD_CORRECTO = "ministros2024"
 
 # --- CONFIGURACIÓN APPSHEET (Para visualizar fotos) ---
-# Puedes obtener estos datos en el editor de AppSheet: Manage -> Integrations -> Cloud Services
 APPSHEET_APP_ID = "32c8e6c2-fc2a-4dd9-97e7-2d0cdb2af68e" 
 APPSHEET_ACCESS_KEY = "V2-aH1dw-B1NeU-AkHMn-VW2ki-X4fcl-rVxWT-pgY26-NT1xZ" 
 
@@ -123,20 +122,36 @@ def conectar_google_sheets():
         st.error(f"Error de conexión: {e}")
         return None
 
+def safe_get_dataframe(worksheet):
+    """
+    Obtiene un DataFrame de forma segura incluso si hay encabezados vacíos o duplicados.
+    """
+    data = worksheet.get_all_values()
+    if not data:
+        return pd.DataFrame()
+    
+    headers = data[0]
+    # Limpiar encabezados vacíos para evitar errores de pandas
+    clean_headers = []
+    for i, h in enumerate(headers):
+        val = h.strip().upper()
+        if val == "":
+            clean_headers.append(f"COL_{i}")
+        else:
+            clean_headers.append(val)
+            
+    df = pd.DataFrame(data[1:], columns=clean_headers)
+    return df
+
 def obtener_url_imagen(ruta_relativa, nombre_tabla):
-    """
-    Convierte la ruta de AppSheet en una URL válida.
-    """
     if not APPSHEET_APP_ID or not APPSHEET_ACCESS_KEY:
         return None
     
-    # Limpiar la ruta por si viene con espacios o caracteres extraños
     ruta_limpia = str(ruta_relativa).strip()
-    if not ruta_limpia or ruta_limpia == "0" or ruta_limpia == "nan":
+    if not ruta_limpia or ruta_limpia in ["0", "nan", "None"]:
         return None
 
     encoded_path = urllib.parse.quote(ruta_limpia)
-    # AppSheet requiere el AccessKey para servir la imagen si la app no es pública
     url = f"https://www.appsheet.com/template/gettablefileurl?appName={APPSHEET_APP_ID}&tableName={nombre_tabla}&fileName={encoded_path}&applicationAccessKey={APPSHEET_ACCESS_KEY}"
     return url
 
@@ -145,19 +160,19 @@ def main():
 
     res = conectar_google_sheets()
     if res and all(res):
-        sheet_m, sheet_rel, sheet_ig, sheet_est_teo, sheet_est_aca, sheet_rev = res
+        sheets = list(res)
         
-        # Cargar DataFrames
-        df_ministros = pd.DataFrame(sheet_m.get_all_records())
-        df_relacion = pd.DataFrame(sheet_rel.get_all_records())
-        df_iglesias_cat = pd.DataFrame(sheet_ig.get_all_records())
-        df_est_teo_raw = pd.DataFrame(sheet_est_teo.get_all_records())
-        df_est_aca_raw = pd.DataFrame(sheet_est_aca.get_all_records())
-        df_revisiones_raw = pd.DataFrame(sheet_rev.get_all_records())
+        # Cargar DataFrames de forma segura (Solución al error GSpreadException)
+        df_ministros = safe_get_dataframe(sheets[0])
+        df_relacion = safe_get_dataframe(sheets[1])
+        df_iglesias_cat = safe_get_dataframe(sheets[2])
+        df_est_teo_raw = safe_get_dataframe(sheets[3])
+        df_est_aca_raw = safe_get_dataframe(sheets[4])
+        df_revisiones_raw = safe_get_dataframe(sheets[5])
 
-        # Limpieza estándar
-        for df in [df_ministros, df_relacion, df_iglesias_cat, df_est_teo_raw, df_est_aca_raw, df_revisiones_raw]:
-            df.columns = [c.strip().upper() for c in df.columns]
+        if df_relacion.empty or df_ministros.empty:
+            st.error("No se pudieron cargar los datos de MINISTRO o RELACION. Revisa los encabezados de tu Excel.")
+            st.stop()
 
         try:
             # Procesamiento de relaciones e iglesia actual
@@ -216,7 +231,6 @@ def main():
                 
                 st.markdown("<div class='img-container'>", unsafe_allow_html=True)
                 if url_foto:
-                    # Se intenta cargar la imagen. Si falla, Streamlit mostrará un área vacía o error controlado.
                     try:
                         st.image(url_foto, use_container_width=True)
                     except:
@@ -224,8 +238,7 @@ def main():
                         st.caption("No se pudo cargar la imagen")
                 else:
                     st.markdown("<div style='font-size:6rem;'>👤</div>", unsafe_allow_html=True)
-                    if col_foto and str(data[col_foto]).strip() in ["0", ""]:
-                        st.caption("Sin fotografía registrada")
+                    st.caption("Sin fotografía")
                 st.markdown("</div>", unsafe_allow_html=True)
             
             with c2:
