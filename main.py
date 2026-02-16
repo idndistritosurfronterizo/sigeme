@@ -1,275 +1,216 @@
 import streamlit as st
 import gspread
 from google.oauth2.service_account import Credentials
-from googleapiclient.discovery import build
-from googleapiclient.http import MediaIoBaseDownload
 import pandas as pd
+import base64
 import os
-import io
-
-# --- CONFIGURACIÓN DE SEGURIDAD ---
-USUARIO_CORRECTO = "admin"
-PASSWORD_CORRECTO = "ministros2024"
 
 # --- CONFIGURACIÓN DE LA PÁGINA ---
 st.set_page_config(
-    page_title="SIGEME - Distrito Sur Fronterizo",
-    page_icon="⛪",
+    page_title="SIGEME - Gestión de Transferencias",
+    page_icon="💸",
     layout="wide"
 )
 
-# --- DISEÑO CSS ---
+# --- ESTILOS VISUALES (CSS) ---
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap');
     html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
-    .stApp { background-color: #f8fafc; }
-    .header-container {
-        background: linear-gradient(135deg, #003366 0%, #00509d 100%);
-        padding: 3rem;
+    
+    .main-header {
+        background: linear-gradient(135deg, #065f46 0%, #059669 100%);
+        padding: 2rem;
         border-radius: 20px;
         color: white;
         text-align: center;
         margin-bottom: 2rem;
-        box-shadow: 0 10px 25px rgba(0,51,102,0.15);
+        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
     }
-    .main-title { font-size: 3.5rem; font-weight: 800; margin: 0; letter-spacing: -1px; }
-    .sub-title { font-size: 1.2rem; opacity: 0.9; margin-top: 0.5rem; }
-    .profile-card {
-        background: #ffffff;
-        border: 1px solid #e2e8f0;
-        border-radius: 15px;
-        padding: 20px;
-        margin-top: 10px;
-    }
-    .content-box {
-        background: white;
-        padding: 2rem;
-        border-radius: 20px;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-    }
-    .img-container {
-        border-radius: 20px;
-        overflow: hidden;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-        border: 3px solid white;
+    
+    .print-btn {
+        background-color: #059669;
+        color: white !important;
+        padding: 12px 24px;
+        border-radius: 10px;
+        text-decoration: none;
+        font-weight: bold;
+        display: inline-block;
         text-align: center;
-        background: #f1f5f9;
-        margin-bottom: 1rem;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        width: 100%;
+        margin-top: 28px;
+        cursor: pointer;
+        border: none;
     }
-    .section-header {
-        color: #003366;
-        border-bottom: 2px solid #e2e8f0;
-        padding-bottom: 0.5rem;
-        margin-top: 2rem;
-        margin-bottom: 1rem;
-        font-weight: 800;
+
+    .highlight-box {
+        background-color: #fff7ed;
+        padding: 15px;
+        border-radius: 10px;
+        border: 2px solid #fb923c;
+        margin-top: 10px;
     }
     </style>
     """, unsafe_allow_html=True)
 
-def check_password():
-    if "authenticated" not in st.session_state:
-        st.session_state["authenticated"] = False
-    if st.session_state["authenticated"]:
-        return True
-    
-    col1, col2, col3 = st.columns([1, 1.2, 1])
-    with col2:
-        st.markdown("<div style='text-align: center; padding: 40px; background: white; border-radius: 24px; box-shadow: 0 20px 50px rgba(0,0,0,0.1);'>", unsafe_allow_html=True)
-        st.title("SIGEME")
-        with st.form("login_form"):
-            user = st.text_input("Usuario")
-            password = st.text_input("Contraseña", type="password")
-            if st.form_submit_button("Acceder", use_container_width=True):
-                if user == USUARIO_CORRECTO and password == PASSWORD_CORRECTO:
-                    st.session_state["authenticated"] = True
-                    st.rerun()
-                else:
-                    st.error("Credenciales incorrectas")
-        st.markdown("</div>", unsafe_allow_html=True)
-    return False
-
-def get_as_dataframe(worksheet):
-    """Método robusto para leer hojas evitando errores de encabezados vacíos o duplicados."""
-    data = worksheet.get_all_values()
-    if not data:
-        return pd.DataFrame()
-    headers = [str(h).strip().upper() if h else f"COL_{i}" for i, h in enumerate(data[0])]
-    # Manejar duplicados en encabezados
-    final_headers = []
-    for i, h in enumerate(headers):
-        if h in final_headers:
-            final_headers.append(f"{h}_{i}")
-        else:
-            final_headers.append(h)
-    return pd.DataFrame(data[1:], columns=final_headers)
-
-def conectar_servicios_google():
+# --- FUNCIÓN DE CONEXIÓN A GOOGLE SHEETS ---
+def conectar_google_sheets():
+    nombre_excel = "trasnsferencias"
     scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-    if not os.path.exists("credenciales.json"):
-        st.error("Archivo credenciales.json no encontrado")
-        return None, None
-    try:
-        creds = Credentials.from_service_account_file("credenciales.json", scopes=scopes)
-        client = gspread.authorize(creds)
-        spreadsheet = client.open("BD MINISTROS")
-        drive_service = build('drive', 'v3', credentials=creds)
-        
-        worksheets = {
-            "MINISTRO": spreadsheet.worksheet("MINISTRO"),
-            "RELACION": spreadsheet.worksheet("IGLESIA"),
-            "CAT_IGLESIAS": spreadsheet.worksheet("IGLESIAS"),
-            "TEOLOGICOS": spreadsheet.worksheet("ESTUDIOS TEOLOGICOS"),
-            "ACADEMICOS": spreadsheet.worksheet("ESTUDIOS ACADEMICOS"),
-            "REVISION": spreadsheet.worksheet("Revision")
-        }
-        return worksheets, drive_service
-    except Exception as e:
-        st.error(f"Error de conexión: {e}")
-        return None, None
-
-def descargar_foto_drive(drive_service, ruta_appsheet):
-    if not ruta_appsheet or str(ruta_appsheet).strip() == "" or "n/a" in str(ruta_appsheet).lower():
-        return None
-    try:
-        nombre_archivo = str(ruta_appsheet).split('/')[-1]
-        query = f"name = '{nombre_archivo}' and trashed = false"
-        results = drive_service.files().list(q=query, fields="files(id, name)").execute()
-        items = results.get('files', [])
-        if items:
-            file_id = items[0]['id']
-            request = drive_service.files().get_media(fileId=file_id)
-            fh = io.BytesIO()
-            downloader = MediaIoBaseDownload(fh, request)
-            done = False
-            while not done:
-                status, done = downloader.next_chunk()
-            fh.seek(0)
-            return fh.read()
-    except:
-        return None
-    return None
-
-def main():
-    if not check_password(): st.stop()
-
-    sheets, drive_service = conectar_servicios_google()
     
-    if sheets:
-        with st.spinner('Cargando datos desde la nube...'):
-            df_ministros = get_as_dataframe(sheets["MINISTRO"])
-            df_relacion = get_as_dataframe(sheets["RELACION"])
-            df_iglesias_cat = get_as_dataframe(sheets["CAT_IGLESIAS"])
-            df_est_teo_raw = get_as_dataframe(sheets["TEOLOGICOS"])
-            df_est_aca_raw = get_as_dataframe(sheets["ACADEMICOS"])
-            df_revisiones_raw = get_as_dataframe(sheets["REVISION"])
-
-        try:
-            # Normalización de datos para cruces
-            df_relacion['AÑO'] = pd.to_numeric(df_relacion['AÑO'], errors='coerce').fillna(0)
-            df_relacion['MINISTRO'] = df_relacion['MINISTRO'].astype(str).str.strip()
-            df_relacion['IGLESIA'] = df_relacion['IGLESIA'].astype(str).str.strip()
-            df_ministros['ID_MINISTRO'] = df_ministros['ID_MINISTRO'].astype(str).str.strip()
-            df_iglesias_cat['ID'] = df_iglesias_cat['ID'].astype(str).str.strip()
-            
-            # Obtener última iglesia
-            df_rel_actual = df_relacion.sort_values(by=['MINISTRO', 'AÑO'], ascending=[True, False]).drop_duplicates(subset=['MINISTRO'])
-            df_rel_con_nombre = pd.merge(df_rel_actual, df_iglesias_cat[['ID', 'NOMBRE']], left_on='IGLESIA', right_on='ID', how='left')
-            
-            df_final = pd.merge(df_ministros, df_rel_con_nombre[['MINISTRO', 'NOMBRE', 'AÑO']], left_on='ID_MINISTRO', right_on='MINISTRO', how='left', suffixes=('', '_REL'))
-            df_final['IGLESIA_RESULTADO'] = df_final['NOMBRE_REL'].fillna("Sin Iglesia Asignada")
-            df_final['AÑO_ULTIMO'] = df_final['AÑO'].apply(lambda x: int(x) if pd.notnull(x) and x > 0 else "N/A")
-
-        except Exception as e:
-            st.error(f"Error procesando tablas: {e}")
-            df_final = df_ministros
-
-        # --- INTERFAZ ---
-        st.markdown("<div class='header-container'><h1 class='main-title'>SIGEME</h1><p class='sub-title'>Distrito Sur Fronterizo</p></div>", unsafe_allow_html=True)
-
-        col_nombre = 'NOMBRE' if 'NOMBRE' in df_final.columns else df_final.columns[1]
-        lista_ministros = sorted(df_final[col_nombre].unique().tolist())
+    try:
+        creds = None
+        if "gcp_service_account" in st.secrets:
+            creds_info = dict(st.secrets["gcp_service_account"])
+            if "private_key" in creds_info:
+                creds_info["private_key"] = creds_info["private_key"].replace("\\n", "\n")
+            creds = Credentials.from_service_account_info(creds_info, scopes=scopes)
+        elif os.path.exists("credenciales.json"):
+            creds = Credentials.from_service_account_file("credenciales.json", scopes=scopes)
         
-        st.markdown("<div class='content-box'>", unsafe_allow_html=True)
-        seleccion = st.selectbox("Seleccione un Ministro:", ["-- Seleccionar --"] + lista_ministros)
-
-        if seleccion != "-- Seleccionar --":
-            data = df_final[df_final[col_nombre] == seleccion].iloc[0]
-            current_id = str(data['ID_MINISTRO'])
+        if not creds:
+            return None
             
-            c1, c2 = st.columns([1, 3])
-            
-            with c1:
-                st.markdown("### 👤 Fotografía")
-                col_foto = next((c for c in data.index if 'FOTO' in c or 'IMAGEN' in c), None)
-                
-                img_data = descargar_foto_drive(drive_service, data[col_foto]) if col_foto else None
-                
-                if img_data:
-                    st.markdown("<div class='img-container'>", unsafe_allow_html=True)
-                    st.image(img_data, use_container_width=True)
-                    st.markdown("</div>", unsafe_allow_html=True)
-                else:
-                    st.markdown("<div class='img-container' style='padding:40px 0; font-size:6rem;'>👤</div>", unsafe_allow_html=True)
-            
-            with c2:
-                st.subheader(data[col_nombre])
-                st.markdown(f"""
-                <div class="profile-card" style="border-left: 6px solid #fbbf24; background: #fffbeb;">
-                    <p style='margin:0; font-size:0.8rem; color:#92400e; font-weight:bold;'>IGLESIA ACTUAL (Gestión {data['AÑO_ULTIMO']})</p>
-                    <h3 style='margin:0; color:#78350f;'>{data['IGLESIA_RESULTADO']}</h3>
-                </div>
-                """, unsafe_allow_html=True)
+        client = gspread.authorize(creds)
+        spreadsheet = client.open(nombre_excel)
+        
+        return {
+            "mes": spreadsheet.worksheet("MES"),
+            "transferencia": spreadsheet.worksheet("Transferencias"),
+            "proveedores": spreadsheet.worksheet("PROVEEDOR")
+        }
+    except Exception as e:
+        st.error(f"❌ Error de conexión: {str(e)}")
+        return None
 
-                excluir = ['ID_MINISTRO', 'NOMBRE', 'IGLESIA', 'MINISTRO', 'NOMBRE_REL', 'AÑO', 'IGLESIA_RESULTADO', 'AÑO_ULTIMO', 'ID', col_foto]
-                visible_fields = [f for f in data.index if f not in excluir and not f.endswith(('_X', '_Y', '_REL'))]
-                
-                cols_info = st.columns(2)
-                for i, field in enumerate(visible_fields):
-                    with cols_info[i % 2]:
-                        val = str(data[field]).strip()
-                        st.markdown(f"""
-                        <div class="profile-card">
-                            <small style='color:#64748b; font-weight:600; text-transform:uppercase;'>{field}</small><br>
-                            <span style='color:#0f172a; font-weight:500;'>{val if val and val != "nan" else "---"}</span>
-                        </div>
-                        """, unsafe_allow_html=True)
+def obtener_dataframe(worksheet):
+    try:
+        data = worksheet.get_all_values()
+        if not data:
+            return pd.DataFrame()
+        return pd.DataFrame(data[1:], columns=data[0])
+    except Exception:
+        return pd.DataFrame()
 
-            # --- TABLAS HISTÓRICAS ---
-            st.markdown("<h3 class='section-header'>📝 HISTORIAL DE REVISIONES</h3>", unsafe_allow_html=True)
-            df_rev = df_revisiones_raw[df_revisiones_raw['MINISTRO'].astype(str).str.strip() == current_id]
-            if not df_rev.empty:
-                df_rev_show = pd.merge(df_rev, df_iglesias_cat[['ID', 'NOMBRE']], left_on='IGLESIA', right_on='ID', how='left')
-                df_rev_show['IGLESIA'] = df_rev_show['NOMBRE'].fillna(df_rev_show['IGLESIA'])
-                st.dataframe(df_rev_show[['IGLESIA', 'FEC_REVISION', 'PROX_REVISION', 'STATUS']].sort_values('FEC_REVISION', ascending=False), use_container_width=True, hide_index=True)
-            else: st.info("No hay revisiones registradas.")
+# --- GENERADOR DEL REPORTE HTML PARA PDF ---
+def generar_html_impresion(mes_row, df_detalles):
+    detalles_html = ""
+    for _, row in df_detalles.iterrows():
+        monto = row.get('TRANSFERIR', '0')
+        detalles_html += f"""
+        <div style="border: 1px solid #eee; padding: 20px; margin-bottom: 15px; border-radius: 10px; page-break-inside: avoid; background-color: #fff; font-size: 14px;">
+            <div style="display: flex; justify-content: space-between; border-bottom: 1px dashed #ccc; padding-bottom: 10px; margin-bottom: 10px;">
+                <span style="font-weight: 800; color: #111; font-size: 16px;">PROVEEDOR: {row.get('NOMBRE_REAL', 'N/A')}</span>
+                <span style="color: #059669; font-weight: bold; font-size: 16px;">TRANSFERIR: ${monto}</span>
+            </div>
+            <table style="width: 100%; border-collapse: collapse; line-height: 1.6;">
+                <tr>
+                    <td style="width: 50%;"><strong>RFC:</strong> {row.get('RFC', 'N/A')}</td>
+                    <td><strong>BANCO:</strong> {row.get('BANCO', 'N/A')}</td>
+                </tr>
+                <tr>
+                    <td><strong>CUENTA:</strong> {row.get('CUENTA', 'N/A')}</td>
+                    <td><strong>CLAVE:</strong> {row.get('CLAVE', 'N/A')}</td>
+                </tr>
+                <tr>
+                    <td><strong>PARTIDA:</strong> {row.get('PARTIDA', 'N/A')}</td>
+                    <td><strong>ACTIVIDAD:</strong> {row.get('ACTIVIDAD', 'N/A')}</td>
+                </tr>
+            </table>
+        </div>
+        """
+    
+    full_html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="UTF-8">
+        <title>Reporte de Pagos - SIGEME</title>
+        <style>
+            body {{ font-family: sans-serif; padding: 20px; color: #333; }}
+            .header-info {{ border-bottom: 3px solid #059669; margin-bottom: 20px; padding-bottom: 10px; }}
+            @media print {{ .btn-print {{ display: none; }} body {{ padding: 0; }} }}
+        </style>
+    </head>
+    <body onload="window.print()">
+        <div class="header-info">
+            <h2 style="margin:0; color:#065f46;">Orden de Dispersión - SIGEME</h2>
+            <p><strong>Periodo:</strong> {mes_row.get('MES', 'N/A')} | <strong>ID Folio:</strong> {mes_row.get('ID', 'N/A')}</p>
+        </div>
+        {detalles_html}
+    </body>
+    </html>
+    """
+    return full_html
 
-            st.markdown("<h3 class='section-header'>🏛️ HISTORIAL DE GESTIÓN EN IGLESIAS</h3>", unsafe_allow_html=True)
-            df_hist = df_relacion[df_relacion['MINISTRO'].astype(str).str.strip() == current_id]
-            if not df_hist.empty:
-                df_hist_show = pd.merge(df_hist, df_iglesias_cat[['ID', 'NOMBRE']], left_on='IGLESIA', right_on='ID', how='left')
-                st.dataframe(df_hist_show[['AÑO', 'NOMBRE', 'OBSERVACION']].sort_values('AÑO', ascending=False), use_container_width=True, hide_index=True)
-            else: st.info("No hay historial de gestión.")
+# --- APP PRINCIPAL ---
+def main():
+    st.markdown('<div class="main-header"><h1>Gestión de Transferencias</h1><p>Sistema SIGEME</p></div>', unsafe_allow_html=True)
 
-            # --- SECCIÓN DE ESTUDIOS (REORDENADA: UNO DEBAJO DEL OTRO) ---
-            st.markdown("<h3 class='section-header'>📚 ESTUDIOS TEOLÓGICOS</h3>", unsafe_allow_html=True)
-            t = df_est_teo_raw[df_est_teo_raw['MINISTRO'].astype(str).str.strip() == current_id]
-            if not t.empty:
-                st.dataframe(t[['NIVEL', 'ESCUELA', 'PERIODO', 'CERTIFICADO']], use_container_width=True, hide_index=True)
-            else:
-                st.info("No se registran estudios teológicos.")
+    sheets = conectar_google_sheets()
+    if not sheets:
+        return
 
-            st.markdown("<h3 class='section-header'>🎓 ESTUDIOS ACADÉMICOS</h3>", unsafe_allow_html=True)
-            a = df_est_aca_raw[df_est_aca_raw['MINISTRO'].astype(str).str.strip() == current_id]
-            if not a.empty:
-                st.dataframe(a[['NIVEL', 'ESCUELA', 'PERIODO', 'CERTIFICADO']], use_container_width=True, hide_index=True)
-            else:
-                st.info("No se registran estudios académicos.")
+    with st.spinner("Sincronizando información..."):
+        df_mes = obtener_dataframe(sheets["mes"])
+        df_trans = obtener_dataframe(sheets["transferencia"])
+        df_prov = obtener_dataframe(sheets["proveedores"])
 
-        else:
-            st.info("Seleccione un ministro para ver su información.")
-        st.markdown("</div>", unsafe_allow_html=True)
+    if df_mes.empty or df_trans.empty or df_prov.empty:
+        st.warning("Verifique las pestañas MES, Transferencias y PROVEEDOR.")
+        return
+
+    # --- CRUCE DE DATOS: ID -> NOMBRE REAL ---
+    df_prov_map = df_prov[['ID', 'PROVEEDOR']].rename(columns={'PROVEEDOR': 'NOMBRE_REAL'})
+    df_trans = df_trans.merge(df_prov_map, left_on='PROVEEDOR', right_on='ID', how='left')
+
+    # --- PANEL DE CONTROL ---
+    st.markdown("### ⚙️ Panel de Control")
+    col_sel, col_btn = st.columns([2, 1])
+    
+    with col_sel:
+        lista_meses = df_mes["MES"].dropna().unique().tolist()
+        lista_meses.reverse()
+        mes_sel = st.selectbox("Seleccione el Mes de Ofrenda", lista_meses)
+    
+    mes_row = df_mes[df_mes["MES"] == mes_sel].iloc[0]
+    id_actual = str(mes_row.get('ID', ''))
+    trans_del_mes = df_trans[df_trans["ID_MES"].astype(str) == id_actual].copy()
+
+    with col_btn:
+        if not trans_del_mes.empty:
+            html_content = generar_html_impresion(mes_row, trans_del_mes)
+            b64 = base64.b64encode(html_content.encode()).decode()
+            href = f'<a href="data:text/html;base64,{b64}" target="_blank" class="print-btn">📂 ABRIR VISTA DE IMPRESIÓN</a>'
+            st.markdown(href, unsafe_allow_html=True)
+            st.caption("Nota: Se abrirá una pestaña nueva con el formato listo para imprimir.")
+
+    st.markdown("---")
+
+    # --- TABLA DE RESULTADOS ---
+    st.subheader("📋 Lista de Transferencias")
+    
+    if not trans_del_mes.empty:
+        columnas_orden = ['NOMBRE_REAL', 'RFC', 'BANCO', 'CUENTA', 'CLAVE', 'PARTIDA', 'ACTIVIDAD', 'TOTAL', 'TRANSFERIR']
+        cols_finales = [c for c in columnas_orden if c in trans_del_mes.columns]
+        
+        df_final = trans_del_mes[cols_finales].copy().rename(columns={'NOMBRE_REAL': 'PROVEEDOR'})
+
+        def highlight_transferir(s):
+            return ['background-color: #fb923c; color: white; font-weight: bold' if s.name == 'TRANSFERIR' else '' for _ in s]
+
+        st.dataframe(df_final.style.apply(highlight_transferir, axis=0), use_container_width=True, hide_index=True)
+        
+        # Resumen de total
+        montos = pd.to_numeric(df_final['TRANSFERIR'].astype(str).str.replace('$','').str.replace(',',''), errors='coerce')
+        st.markdown(f"""
+            <div class="highlight-box">
+                <span style="color: #9a3412; font-size: 1.3rem;"><b>Total a Transferir ({mes_sel}):</b> ${montos.sum():,.2f}</span>
+            </div>
+        """, unsafe_allow_html=True)
+    else:
+        st.info("No hay datos registrados para este periodo.")
 
 if __name__ == "__main__":
     main()
