@@ -6,7 +6,6 @@ from googleapiclient.http import MediaIoBaseDownload
 import pandas as pd
 import os
 import io
-from datetime import datetime
 
 # --- CONFIGURACIÓN DE SEGURIDAD ---
 USUARIO_CORRECTO = "admin"
@@ -14,305 +13,60 @@ PASSWORD_CORRECTO = "ministros2024"
 
 # --- CONFIGURACIÓN DE LA PÁGINA ---
 st.set_page_config(
-    page_title="SIGEME | Distrito Sur Fronterizo",
+    page_title="SIGEME - Distrito Sur Fronterizo",
     page_icon="⛪",
-    layout="wide",
-    initial_sidebar_state="collapsed"
+    layout="wide"
 )
 
-# --- DISEÑO CSS OPTIMIZADO (espectacular pero ligero) ---
+# --- DISEÑO CSS ---
 st.markdown("""
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
-    
-    /* Variables de color */
-    :root {
-        --primary: #1e3a5f;
-        --primary-light: #2b4c7c;
-        --primary-dark: #0f2b44;
-        --accent: #c9a959;
-        --accent-light: #dbbc7c;
-        --accent-dark: #a88b42;
-        --success: #2e7d5e;
-        --warning: #c97c2e;
-        --gray-50: #f8fafc;
-        --gray-100: #f1f5f9;
-        --gray-200: #e2e8f0;
-        --gray-300: #cbd5e1;
-        --gray-600: #475569;
-        --gray-700: #334155;
-        --gray-800: #1e293b;
-        --gray-900: #0f172a;
-    }
-    
-    /* Estilos base */
-    html, body, [class*="css"] { 
-        font-family: 'Inter', sans-serif;
-    }
-    
-    .stApp {
-        background: linear-gradient(135deg, var(--gray-50) 0%, white 100%);
-    }
-    
-    /* Header elegante */
-    .header-premium {
-        background: linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%);
-        padding: 2.5rem 2rem;
-        border-radius: 30px;
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap');
+    html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
+    .stApp { background-color: #f8fafc; }
+    .header-container {
+        background: linear-gradient(135deg, #003366 0%, #00509d 100%);
+        padding: 3rem;
+        border-radius: 20px;
+        color: white;
+        text-align: center;
         margin-bottom: 2rem;
-        box-shadow: 0 15px 25px -8px rgba(30,58,95,0.3);
-        position: relative;
-        overflow: hidden;
+        box-shadow: 0 10px 25px rgba(0,51,102,0.15);
     }
-    
-    .header-premium::after {
-        content: '';
-        position: absolute;
-        top: -30%;
-        right: -10%;
-        width: 40%;
-        height: 160%;
-        background: radial-gradient(circle, rgba(201,169,89,0.2) 0%, transparent 70%);
+    .main-title { font-size: 3.5rem; font-weight: 800; margin: 0; letter-spacing: -1px; }
+    .sub-title { font-size: 1.2rem; opacity: 0.9; margin-top: 0.5rem; }
+    .profile-card {
+        background: #ffffff;
+        border: 1px solid #e2e8f0;
+        border-radius: 15px;
+        padding: 20px;
+        margin-top: 10px;
     }
-    
-    .header-title {
-        font-size: 3.5rem;
-        font-weight: 800;
-        color: white;
-        margin: 0;
-        letter-spacing: -1px;
-        text-shadow: 0 2px 10px rgba(0,0,0,0.2);
-    }
-    
-    .header-subtitle {
-        font-size: 1.2rem;
-        color: rgba(255,255,255,0.9);
-        margin-top: 0.3rem;
-        font-weight: 300;
-        letter-spacing: 2px;
-    }
-    
-    .header-badge {
-        display: inline-block;
-        background: rgba(255,255,255,0.15);
-        padding: 0.4rem 1.5rem;
-        border-radius: 50px;
-        color: white;
-        font-size: 0.9rem;
-        margin-top: 1rem;
-        border: 1px solid rgba(255,255,255,0.2);
-    }
-    
-    /* Tarjetas elegantes */
-    .card-premium {
+    .content-box {
         background: white;
-        border-radius: 20px;
-        padding: 1.5rem;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.03);
-        border: 1px solid var(--gray-200);
-        transition: all 0.3s ease;
-    }
-    
-    .card-premium:hover {
-        border-color: var(--accent);
-        box-shadow: 0 12px 24px -12px rgba(201,169,89,0.3);
-        transform: translateY(-2px);
-    }
-    
-    /* Métricas */
-    .metric-premium {
-        background: white;
-        border-radius: 18px;
-        padding: 1.5rem;
-        border-left: 5px solid var(--accent);
-        box-shadow: 0 4px 12px rgba(0,0,0,0.02);
-    }
-    
-    .metric-value {
-        font-size: 2.2rem;
-        font-weight: 700;
-        color: var(--primary);
-        line-height: 1;
-    }
-    
-    .metric-label {
-        font-size: 0.85rem;
-        text-transform: uppercase;
-        color: var(--gray-600);
-        letter-spacing: 1px;
-    }
-    
-    /* Avatar */
-    .avatar-premium {
-        width: 180px;
-        height: 180px;
-        border-radius: 25px;
-        background: linear-gradient(135deg, var(--primary-light), var(--primary));
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 4.5rem;
-        color: white;
-        border: 4px solid var(--accent);
-        box-shadow: 0 15px 25px -8px rgba(30,58,95,0.3);
-    }
-    
-    /* Iglesia spotlight */
-    .church-spotlight {
-        background: linear-gradient(135deg, rgba(201,169,89,0.08) 0%, rgba(201,169,89,0.02) 100%);
-        border: 1px solid rgba(201,169,89,0.2);
-        border-radius: 20px;
-        padding: 1.8rem;
-        margin: 1.5rem 0;
-    }
-    
-    .church-label {
-        font-size: 0.85rem;
-        text-transform: uppercase;
-        color: var(--accent);
-        letter-spacing: 2px;
-    }
-    
-    .church-name {
-        font-size: 2rem;
-        font-weight: 700;
-        color: var(--primary);
-        margin: 0.3rem 0;
-    }
-    
-    .church-year {
-        display: inline-block;
-        background: var(--accent);
-        color: white;
-        padding: 0.3rem 1.2rem;
-        border-radius: 30px;
-        font-weight: 600;
-        font-size: 0.9rem;
-    }
-    
-    /* Info cards */
-    .info-card {
-        background: var(--gray-50);
-        border-radius: 16px;
-        padding: 1.2rem;
-        border: 1px solid var(--gray-200);
-        transition: all 0.2s;
-    }
-    
-    .info-card:hover {
-        background: white;
-        border-color: var(--accent);
-    }
-    
-    .info-label {
-        color: var(--gray-600);
-        font-size: 0.8rem;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-    }
-    
-    .info-value {
-        color: var(--gray-800);
-        font-size: 1.1rem;
-        font-weight: 600;
-        margin-top: 0.2rem;
-    }
-    
-    /* Timeline */
-    .timeline-item {
-        background: white;
-        border-radius: 16px;
-        padding: 1.2rem;
-        margin-bottom: 0.8rem;
-        border-left: 4px solid var(--accent);
-        box-shadow: 0 2px 8px rgba(0,0,0,0.02);
-    }
-    
-    .timeline-year {
-        background: var(--primary);
-        color: white;
-        padding: 0.2rem 1rem;
-        border-radius: 20px;
-        font-size: 0.85rem;
-        font-weight: 600;
-        display: inline-block;
-    }
-    
-    /* Badges */
-    .badge {
-        display: inline-block;
-        padding: 0.25rem 1rem;
-        border-radius: 30px;
-        font-size: 0.8rem;
-        font-weight: 600;
-    }
-    
-    .badge-success {
-        background: #d5f0e6;
-        color: #0b5e42;
-    }
-    
-    .badge-warning {
-        background: #fee9d1;
-        color: #a45c1e;
-    }
-    
-    /* Login */
-    .login-card {
-        background: white;
-        border-radius: 30px;
-        padding: 2.5rem;
-        box-shadow: 0 25px 40px -15px rgba(30,58,95,0.3);
-        border: 1px solid rgba(201,169,89,0.2);
-    }
-    
-    /* Footer */
-    .footer {
-        text-align: center;
         padding: 2rem;
-        color: var(--gray-600);
-        border-top: 1px solid var(--gray-200);
-        margin-top: 3rem;
+        border-radius: 20px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
     }
-    
-    /* Divider */
-    .divider {
-        display: flex;
-        align-items: center;
-        margin: 2rem 0;
-    }
-    
-    .divider::before,
-    .divider::after {
-        content: '';
-        flex: 1;
-        border-bottom: 1px solid var(--gray-200);
-    }
-    
-    .divider span {
-        padding: 0 1rem;
-        color: var(--accent);
-        font-size: 1rem;
-    }
-    
-    /* Welcome */
-    .welcome {
+    .img-container {
+        border-radius: 20px;
+        overflow: hidden;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        border: 3px solid white;
         text-align: center;
-        padding: 4rem 2rem;
+        background: #f1f5f9;
+        margin-bottom: 1rem;
     }
-    
-    .welcome-icon {
-        font-size: 6rem;
-        color: var(--accent);
-    }
-    
-    .welcome-title {
-        font-size: 2rem;
-        color: var(--primary);
-        margin: 1rem 0;
+    .section-header {
+        color: #003366;
+        border-bottom: 2px solid #e2e8f0;
+        padding-bottom: 0.5rem;
+        margin-top: 2rem;
+        margin-bottom: 1rem;
+        font-weight: 800;
     }
     </style>
-""", unsafe_allow_html=True)
+    """, unsafe_allow_html=True)
 
 def check_password():
     if "authenticated" not in st.session_state:
@@ -322,35 +76,27 @@ def check_password():
     
     col1, col2, col3 = st.columns([1, 1.2, 1])
     with col2:
-        st.markdown("<div class='login-card'>", unsafe_allow_html=True)
-        
-        st.markdown("""
-            <div style='text-align: center; margin-bottom: 2rem;'>
-                <div style='font-size: 4rem;'>⛪</div>
-                <h1 style='color: var(--primary); font-size: 2.5rem; margin: 0;'>SIGEME</h1>
-                <p style='color: var(--gray-600);'>Sistema de Gestión Ministerial</p>
-            </div>
-        """, unsafe_allow_html=True)
-        
+        st.markdown("<div style='text-align: center; padding: 40px; background: white; border-radius: 24px; box-shadow: 0 20px 50px rgba(0,0,0,0.1);'>", unsafe_allow_html=True)
+        st.title("SIGEME")
         with st.form("login_form"):
-            user = st.text_input("Usuario", placeholder="Ingresa tu usuario")
-            password = st.text_input("Contraseña", type="password", placeholder="Ingresa tu contraseña")
-            
-            if st.form_submit_button("✦ ACCEDER ✦", use_container_width=True):
+            user = st.text_input("Usuario")
+            password = st.text_input("Contraseña", type="password")
+            if st.form_submit_button("Acceder", use_container_width=True):
                 if user == USUARIO_CORRECTO and password == PASSWORD_CORRECTO:
                     st.session_state["authenticated"] = True
                     st.rerun()
                 else:
-                    st.error("❌ Credenciales incorrectas")
-        
+                    st.error("Credenciales incorrectas")
         st.markdown("</div>", unsafe_allow_html=True)
     return False
 
 def get_as_dataframe(worksheet):
+    """Método robusto para leer hojas evitando errores de encabezados vacíos o duplicados."""
     data = worksheet.get_all_values()
     if not data:
         return pd.DataFrame()
     headers = [str(h).strip().upper() if h else f"COL_{i}" for i, h in enumerate(data[0])]
+    # Manejar duplicados en encabezados
     final_headers = []
     for i, h in enumerate(headers):
         if h in final_headers:
@@ -362,7 +108,7 @@ def get_as_dataframe(worksheet):
 def conectar_servicios_google():
     scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
     if not os.path.exists("credenciales.json"):
-        st.error("📁 Archivo credenciales.json no encontrado")
+        st.error("Archivo credenciales.json no encontrado")
         return None, None
     try:
         creds = Credentials.from_service_account_file("credenciales.json", scopes=scopes)
@@ -380,7 +126,7 @@ def conectar_servicios_google():
         }
         return worksheets, drive_service
     except Exception as e:
-        st.error(f"❌ Error de conexión: {e}")
+        st.error(f"Error de conexión: {e}")
         return None, None
 
 def descargar_foto_drive(drive_service, ruta_appsheet):
@@ -406,249 +152,124 @@ def descargar_foto_drive(drive_service, ruta_appsheet):
     return None
 
 def main():
-    if not check_password(): 
-        st.stop()
-    
-    # Header
-    st.markdown("""
-    <div class='header-premium'>
-        <div style='position: relative; z-index: 2;'>
-            <h1 class='header-title'>SIGEME</h1>
-            <div class='header-subtitle'>DISTRITO SUR FRONTERIZO</div>
-            <div class='header-badge'>⛪ Sistema de Gestión Ministerial ⛪</div>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-    
+    if not check_password(): st.stop()
+
     sheets, drive_service = conectar_servicios_google()
     
-    if not sheets:
-        st.error("No se pudo conectar a Google Sheets")
-        st.stop()
-    
-    with st.spinner('Cargando datos...'):
-        df_ministros = get_as_dataframe(sheets["MINISTRO"])
-        df_relacion = get_as_dataframe(sheets["RELACION"])
-        df_iglesias_cat = get_as_dataframe(sheets["CAT_IGLESIAS"])
-        df_est_teo_raw = get_as_dataframe(sheets["TEOLOGICOS"])
-        df_est_aca_raw = get_as_dataframe(sheets["ACADEMICOS"])
-        df_revisiones_raw = get_as_dataframe(sheets["REVISION"])
-    
-    try:
-        # Procesamiento de datos
-        df_relacion['AÑO'] = pd.to_numeric(df_relacion['AÑO'], errors='coerce').fillna(0)
-        df_relacion['MINISTRO'] = df_relacion['MINISTRO'].astype(str).str.strip()
-        df_relacion['IGLESIA'] = df_relacion['IGLESIA'].astype(str).str.strip()
-        df_ministros['ID_MINISTRO'] = df_ministros['ID_MINISTRO'].astype(str).str.strip()
-        df_iglesias_cat['ID'] = df_iglesias_cat['ID'].astype(str).str.strip()
-        
-        # Obtener última iglesia
-        df_rel_actual = df_relacion.sort_values(by=['MINISTRO', 'AÑO'], ascending=[True, False]).drop_duplicates(subset=['MINISTRO'])
-        df_rel_con_nombre = pd.merge(df_rel_actual, df_iglesias_cat[['ID', 'NOMBRE']], left_on='IGLESIA', right_on='ID', how='left')
-        
-        df_final = pd.merge(df_ministros, df_rel_con_nombre[['MINISTRO', 'NOMBRE', 'AÑO']], left_on='ID_MINISTRO', right_on='MINISTRO', how='left', suffixes=('', '_REL'))
-        df_final['IGLESIA_RESULTADO'] = df_final['NOMBRE_REL'].fillna("Sin Iglesia Asignada")
-        df_final['AÑO_ULTIMO'] = df_final['AÑO'].apply(lambda x: int(x) if pd.notnull(x) and x > 0 else "N/A")
-        
-        # Métricas
-        col1, col2, col3, col4 = st.columns(4)
-        
-        with col1:
-            st.markdown(f"""
-            <div class='metric-premium'>
-                <div class='metric-value'>{len(df_ministros)}</div>
-                <div class='metric-label'>Total Ministros</div>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        with col2:
-            activos = len(df_final[df_final['IGLESIA_RESULTADO'] != "Sin Iglesia Asignada"])
-            st.markdown(f"""
-            <div class='metric-premium'>
-                <div class='metric-value'>{activos}</div>
-                <div class='metric-label'>Ministros Activos</div>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        with col3:
-            st.markdown(f"""
-            <div class='metric-premium'>
-                <div class='metric-value'>{df_iglesias_cat['NOMBRE'].nunique()}</div>
-                <div class='metric-label'>Iglesias</div>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        with col4:
-            hoy = datetime.now().strftime("%d/%m/%Y")
-            st.markdown(f"""
-            <div class='metric-premium'>
-                <div class='metric-value'>{hoy}</div>
-                <div class='metric-label'>Fecha</div>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        # Selector
+    if sheets:
+        with st.spinner('Cargando datos desde la nube...'):
+            df_ministros = get_as_dataframe(sheets["MINISTRO"])
+            df_relacion = get_as_dataframe(sheets["RELACION"])
+            df_iglesias_cat = get_as_dataframe(sheets["CAT_IGLESIAS"])
+            df_est_teo_raw = get_as_dataframe(sheets["TEOLOGICOS"])
+            df_est_aca_raw = get_as_dataframe(sheets["ACADEMICOS"])
+            df_revisiones_raw = get_as_dataframe(sheets["REVISION"])
+
+        try:
+            # Normalización de datos para cruces
+            df_relacion['AÑO'] = pd.to_numeric(df_relacion['AÑO'], errors='coerce').fillna(0)
+            df_relacion['MINISTRO'] = df_relacion['MINISTRO'].astype(str).str.strip()
+            df_relacion['IGLESIA'] = df_relacion['IGLESIA'].astype(str).str.strip()
+            df_ministros['ID_MINISTRO'] = df_ministros['ID_MINISTRO'].astype(str).str.strip()
+            df_iglesias_cat['ID'] = df_iglesias_cat['ID'].astype(str).str.strip()
+            
+            # Obtener última iglesia
+            df_rel_actual = df_relacion.sort_values(by=['MINISTRO', 'AÑO'], ascending=[True, False]).drop_duplicates(subset=['MINISTRO'])
+            df_rel_con_nombre = pd.merge(df_rel_actual, df_iglesias_cat[['ID', 'NOMBRE']], left_on='IGLESIA', right_on='ID', how='left')
+            
+            df_final = pd.merge(df_ministros, df_rel_con_nombre[['MINISTRO', 'NOMBRE', 'AÑO']], left_on='ID_MINISTRO', right_on='MINISTRO', how='left', suffixes=('', '_REL'))
+            df_final['IGLESIA_RESULTADO'] = df_final['NOMBRE_REL'].fillna("Sin Iglesia Asignada")
+            df_final['AÑO_ULTIMO'] = df_final['AÑO'].apply(lambda x: int(x) if pd.notnull(x) and x > 0 else "N/A")
+
+        except Exception as e:
+            st.error(f"Error procesando tablas: {e}")
+            df_final = df_ministros
+
+        # --- INTERFAZ ---
+        st.markdown("<div class='header-container'><h1 class='main-title'>SIGEME</h1><p class='sub-title'>Distrito Sur Fronterizo</p></div>", unsafe_allow_html=True)
+
         col_nombre = 'NOMBRE' if 'NOMBRE' in df_final.columns else df_final.columns[1]
         lista_ministros = sorted(df_final[col_nombre].unique().tolist())
         
-        st.markdown("<div class='card-premium'>", unsafe_allow_html=True)
-        
-        st.markdown("<p style='color: var(--accent); font-weight: 600; margin-bottom: 0;'>✦ SELECCIONAR MINISTRO</p>", unsafe_allow_html=True)
-        seleccion = st.selectbox("", ["—— SELECCIONE ——"] + lista_ministros, label_visibility="collapsed")
-        
-        if seleccion != "—— SELECCIONE ——":
+        st.markdown("<div class='content-box'>", unsafe_allow_html=True)
+        seleccion = st.selectbox("Seleccione un Ministro:", ["-- Seleccionar --"] + lista_ministros)
+
+        if seleccion != "-- Seleccionar --":
             data = df_final[df_final[col_nombre] == seleccion].iloc[0]
             current_id = str(data['ID_MINISTRO'])
             
-            st.markdown("<div class='divider'><span>✦</span></div>", unsafe_allow_html=True)
+            c1, c2 = st.columns([1, 3])
             
-            # Perfil
-            col_foto = next((c for c in data.index if 'FOTO' in c or 'IMAGEN' in c), None)
-            img_data = descargar_foto_drive(drive_service, data[col_foto]) if col_foto else None
-            
-            col1, col2 = st.columns([1, 2])
-            
-            with col1:
-                if img_data:
-                    st.image(img_data, use_container_width=True)
-                else:
-                    st.markdown("<div class='avatar-premium'>👤</div>", unsafe_allow_html=True)
-            
-            with col2:
-                st.markdown(f"<h2 style='color: var(--primary); margin-top: 0;'>{data[col_nombre]}</h2>", unsafe_allow_html=True)
+            with c1:
+                st.markdown("### 👤 Fotografía")
+                col_foto = next((c for c in data.index if 'FOTO' in c or 'IMAGEN' in c), None)
                 
+                img_data = descargar_foto_drive(drive_service, data[col_foto]) if col_foto else None
+                
+                if img_data:
+                    st.markdown("<div class='img-container'>", unsafe_allow_html=True)
+                    st.image(img_data, use_container_width=True)
+                    st.markdown("</div>", unsafe_allow_html=True)
+                else:
+                    st.markdown("<div class='img-container' style='padding:40px 0; font-size:6rem;'>👤</div>", unsafe_allow_html=True)
+            
+            with c2:
+                st.subheader(data[col_nombre])
                 st.markdown(f"""
-                <div class='church-spotlight'>
-                    <div class='church-label'>Iglesia Actual</div>
-                    <div class='church-name'>{data['IGLESIA_RESULTADO']}</div>
-                    <div class='church-year'>Gestión {data['AÑO_ULTIMO']}</div>
+                <div class="profile-card" style="border-left: 6px solid #fbbf24; background: #fffbeb;">
+                    <p style='margin:0; font-size:0.8rem; color:#92400e; font-weight:bold;'>IGLESIA ACTUAL (Gestión {data['AÑO_ULTIMO']})</p>
+                    <h3 style='margin:0; color:#78350f;'>{data['IGLESIA_RESULTADO']}</h3>
                 </div>
                 """, unsafe_allow_html=True)
-            
-            # Información personal
-            st.markdown("<div class='divider'><span>✦ INFORMACIÓN PERSONAL ✦</span></div>", unsafe_allow_html=True)
-            
-            excluir = ['ID_MINISTRO', 'NOMBRE', 'IGLESIA', 'MINISTRO', 'NOMBRE_REL', 'AÑO', 'IGLESIA_RESULTADO', 'AÑO_ULTIMO', 'ID', col_foto]
-            visible_fields = [f for f in data.index if f not in excluir and not f.endswith(('_X', '_Y', '_REL'))]
-            
-            info_cols = st.columns(3)
-            for i, field in enumerate(visible_fields):
-                val = str(data[field]).strip()
-                if val and val != "nan":
-                    with info_cols[i % 3]:
+
+                excluir = ['ID_MINISTRO', 'NOMBRE', 'IGLESIA', 'MINISTRO', 'NOMBRE_REL', 'AÑO', 'IGLESIA_RESULTADO', 'AÑO_ULTIMO', 'ID', col_foto]
+                visible_fields = [f for f in data.index if f not in excluir and not f.endswith(('_X', '_Y', '_REL'))]
+                
+                cols_info = st.columns(2)
+                for i, field in enumerate(visible_fields):
+                    with cols_info[i % 2]:
+                        val = str(data[field]).strip()
                         st.markdown(f"""
-                        <div class='info-card'>
-                            <div class='info-label'>{field}</div>
-                            <div class='info-value'>{val}</div>
+                        <div class="profile-card">
+                            <small style='color:#64748b; font-weight:600; text-transform:uppercase;'>{field}</small><br>
+                            <span style='color:#0f172a; font-weight:500;'>{val if val and val != "nan" else "---"}</span>
                         </div>
                         """, unsafe_allow_html=True)
-            
-            # Revisiones
-            st.markdown("<div class='divider'><span>✦ REVISIONES MINISTERIALES ✦</span></div>", unsafe_allow_html=True)
-            
+
+            # --- TABLAS HISTÓRICAS ---
+            st.markdown("<h3 class='section-header'>📝 HISTORIAL DE REVISIONES</h3>", unsafe_allow_html=True)
             df_rev = df_revisiones_raw[df_revisiones_raw['MINISTRO'].astype(str).str.strip() == current_id]
             if not df_rev.empty:
                 df_rev_show = pd.merge(df_rev, df_iglesias_cat[['ID', 'NOMBRE']], left_on='IGLESIA', right_on='ID', how='left')
                 df_rev_show['IGLESIA'] = df_rev_show['NOMBRE'].fillna(df_rev_show['IGLESIA'])
-                
-                for _, row in df_rev_show.sort_values('FEC_REVISION', ascending=False).iterrows():
-                    status_class = "badge-success" if "COMPLETADA" in str(row['STATUS']).upper() else "badge-warning"
-                    st.markdown(f"""
-                    <div class='timeline-item'>
-                        <div style='display: flex; justify-content: space-between; align-items: center;'>
-                            <span style='font-weight: 600; color: var(--primary);'>{row['IGLESIA']}</span>
-                            <span class='badge {status_class}'>{row['STATUS']}</span>
-                        </div>
-                        <div style='margin-top: 0.5rem; color: var(--gray-600);'>
-                            📅 {row['FEC_REVISION']} | ⏭️ {row['PROX_REVISION']}
-                        </div>
-                    </div>
-                    """, unsafe_allow_html=True)
-            else:
-                st.info("No hay revisiones registradas")
-            
-            # Historial
-            st.markdown("<div class='divider'><span>✦ HISTORIAL DE GESTIÓN ✦</span></div>", unsafe_allow_html=True)
-            
+                st.dataframe(df_rev_show[['IGLESIA', 'FEC_REVISION', 'PROX_REVISION', 'STATUS']].sort_values('FEC_REVISION', ascending=False), use_container_width=True, hide_index=True)
+            else: st.info("No hay revisiones registradas.")
+
+            st.markdown("<h3 class='section-header'>🏛️ HISTORIAL DE GESTIÓN EN IGLESIAS</h3>", unsafe_allow_html=True)
             df_hist = df_relacion[df_relacion['MINISTRO'].astype(str).str.strip() == current_id]
             if not df_hist.empty:
                 df_hist_show = pd.merge(df_hist, df_iglesias_cat[['ID', 'NOMBRE']], left_on='IGLESIA', right_on='ID', how='left')
-                
-                for _, row in df_hist_show.sort_values('AÑO', ascending=False).iterrows():
-                    st.markdown(f"""
-                    <div class='timeline-item'>
-                        <span class='timeline-year'>{int(row['AÑO'])}</span>
-                        <div style='font-weight: 600; margin: 0.5rem 0;'>{row['NOMBRE']}</div>
-                        <div style='color: var(--gray-600);'>{row['OBSERVACION']}</div>
-                    </div>
-                    """, unsafe_allow_html=True)
+                st.dataframe(df_hist_show[['AÑO', 'NOMBRE', 'OBSERVACION']].sort_values('AÑO', ascending=False), use_container_width=True, hide_index=True)
+            else: st.info("No hay historial de gestión.")
+
+            # --- SECCIÓN DE ESTUDIOS (REORDENADA: UNO DEBAJO DEL OTRO) ---
+            st.markdown("<h3 class='section-header'>📚 ESTUDIOS TEOLÓGICOS</h3>", unsafe_allow_html=True)
+            t = df_est_teo_raw[df_est_teo_raw['MINISTRO'].astype(str).str.strip() == current_id]
+            if not t.empty:
+                st.dataframe(t[['NIVEL', 'ESCUELA', 'PERIODO', 'CERTIFICADO']], use_container_width=True, hide_index=True)
             else:
-                st.info("No hay historial de gestión")
-            
-            # Estudios
-            st.markdown("<div class='divider'><span>✦ FORMACIÓN ACADÉMICA ✦</span></div>", unsafe_allow_html=True)
-            
-            col_est1, col_est2 = st.columns(2)
-            
-            with col_est1:
-                st.markdown("<h3 style='color: var(--primary);'>📖 Teológicos</h3>", unsafe_allow_html=True)
-                t = df_est_teo_raw[df_est_teo_raw['MINISTRO'].astype(str).str.strip() == current_id]
-                if not t.empty:
-                    for _, row in t.iterrows():
-                        st.markdown(f"""
-                        <div class='info-card' style='margin-bottom: 0.5rem;'>
-                            <div style='font-weight: 600;'>{row['NIVEL']}</div>
-                            <div style='color: var(--gray-600);'>{row['ESCUELA']} | {row['PERIODO']}</div>
-                        </div>
-                        """, unsafe_allow_html=True)
-                else:
-                    st.info("No registra estudios teológicos")
-            
-            with col_est2:
-                st.markdown("<h3 style='color: var(--accent);'>🎓 Académicos</h3>", unsafe_allow_html=True)
-                a = df_est_aca_raw[df_est_aca_raw['MINISTRO'].astype(str).str.strip() == current_id]
-                if not a.empty:
-                    for _, row in a.iterrows():
-                        st.markdown(f"""
-                        <div class='info-card' style='margin-bottom: 0.5rem;'>
-                            <div style='font-weight: 600;'>{row['NIVEL']}</div>
-                            <div style='color: var(--gray-600);'>{row['ESCUELA']} | {row['PERIODO']}</div>
-                        </div>
-                        """, unsafe_allow_html=True)
-                else:
-                    st.info("No registra estudios académicos")
-        
+                st.info("No se registran estudios teológicos.")
+
+            st.markdown("<h3 class='section-header'>🎓 ESTUDIOS ACADÉMICOS</h3>", unsafe_allow_html=True)
+            a = df_est_aca_raw[df_est_aca_raw['MINISTRO'].astype(str).str.strip() == current_id]
+            if not a.empty:
+                st.dataframe(a[['NIVEL', 'ESCUELA', 'PERIODO', 'CERTIFICADO']], use_container_width=True, hide_index=True)
+            else:
+                st.info("No se registran estudios académicos.")
+
         else:
-            st.markdown("""
-            <div class='welcome'>
-                <div class='welcome-icon'>⛪</div>
-                <h2 class='welcome-title'>Bienvenido al Sistema</h2>
-                <p style='color: var(--gray-600);'>Seleccione un ministro para ver su información</p>
-            </div>
-            """, unsafe_allow_html=True)
-        
+            st.info("Seleccione un ministro para ver su información.")
         st.markdown("</div>", unsafe_allow_html=True)
-        
-        # Footer
-        st.markdown("""
-        <div class='footer'>
-            <div style='display: flex; justify-content: center; gap: 2rem; margin-bottom: 1rem;'>
-                <span>⛪ SIGEME</span>
-                <span>✦</span>
-                <span>Distrito Sur Fronterizo</span>
-                <span>✦</span>
-                <span>© 2026</span>
-            </div>
-            <div style='font-size: 0.8rem; opacity: 0.6;'>
-                Sistema de Gestión Ministerial
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-        
-    except Exception as e:
-        st.error(f"Error: {e}")
-        import traceback
-        st.code(traceback.format_exc())
 
 if __name__ == "__main__":
     main()
